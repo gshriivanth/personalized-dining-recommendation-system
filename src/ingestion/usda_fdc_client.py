@@ -40,3 +40,19 @@ class USDAFoodDataCentralClient:
         )
         response.raise_for_status()
         return response.json()
+    
+    def fetch_food(self, fdc_id: int) -> Dict[str, Any]:
+        """
+        GET /food/{fdcId}
+        Returns raw JSON including foodNutrients[].
+        """
+        url = f"{USDA_FDC_BASE_URL}/food/{fdc_id}"
+        response = requests.get(
+            url,
+            params = {"api_key": self.api_key},
+            timeout=self.timeout_s
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    
