@@ -7,7 +7,7 @@ including their origin, access method, format, and how they are used in the base
 
 | Source Name | What It Provides | Where It Comes From | Access Method | Format | Fields Used | Baseline Plan |
 |------------|-----------------|---------------------|---------------|--------|-------------|----------------|
-| Nutritionix API | Nutrition data and food names | https://www.nutritionix.com/business/api | REST API | JSON | name, calories, protein, fat, carbs | Ingest ~100 food items |
+| USDA FoodData Central API | Official nutrition data for foods (raw, branded, prepared) | https://fdc.nal.usda.gov/api-guide.html | REST API | JSON | description, calories, protein, fat, carbs | Ingest ~100 food items |
 | UCI Dining Menus (Anteatery) | Daily menu items and availability | https://uci.campusdish.com/ | HTML scrape / manual export | HTML → JSON | item name, meal, dietary tags | Ingest one day of menu items |
 | UCI Dining Menus (Brandywine) | Daily menu items and availability | https://uci.campusdish.com/ | HTML scrape / manual export | HTML → JSON | item name, meal, dietary tags | Ingest one day of menu items |
 
