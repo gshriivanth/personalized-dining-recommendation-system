@@ -4,8 +4,8 @@ import requests
 
 from src.config import USDA_FDC_API_KEY, USDA_FDC_BASE_URL
 
+#client interface doesn't do any error handling, leaves that up to the caller
 class USDAFoodDataCentralClient:
-    #client interface doesn't do any error handling, leaves that up to the caller
     def __init__(self, api_key: Optional[str] = None, timeout_s: int = 20):
         #use api_key parameter to override environment variable for testing
         self.api_key = api_key or USDA_FDC_API_KEY
@@ -15,6 +15,20 @@ class USDAFoodDataCentralClient:
                 "Missing USDA FDC API key. Set environment variable USDA_FDC_API_KEY."
             )
         
+    def fetch_food(self, fdc_id: int) -> Dict[str, Any]:
+        """
+        GET /food/{fdcId}
+        Returns raw JSON including foodNutrients[] for a single food item.
+        """
+        url = f"{USDA_FDC_BASE_URL}/food/{fdc_id}"
+        response = requests.get(
+            url,
+            params = {"api_key": self.api_key},
+            timeout = self.timeout_s
+        )
+        response.raise_for_status()
+        return response.json()
+    
     def search_foods(
         self,
         query: str,
@@ -42,20 +56,6 @@ class USDAFoodDataCentralClient:
         response.raise_for_status()
         return response.json()
     
-    def fetch_food(self, fdc_id: int) -> Dict[str, Any]:
-        """
-        GET /food/{fdcId}
-        Returns raw JSON including foodNutrients[] for a single food item.
-        """
-        url = f"{USDA_FDC_BASE_URL}/food/{fdc_id}"
-        response = requests.get(
-            url,
-            params = {"api_key": self.api_key},
-            timeout = self.timeout_s
-        )
-        response.raise_for_status()
-        return response.json()
-    
     def fetch_multiple_foods(self, fdc_ids: List[int]) -> Dict[str, Any]:
         """
         POST /foods
@@ -66,8 +66,8 @@ class USDAFoodDataCentralClient:
         response = requests.post(
             url,
             params = {"api_key": self.api_key},
+            json = {"fdcIds": fdc_ids},
             timeout = self.timeout_s
         )
         response.raise_for_status()
         return response.json()
-
