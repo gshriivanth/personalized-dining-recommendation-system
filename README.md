@@ -26,6 +26,6 @@ raw data → logical view → index → query → ranked results.
 - docs/        # Design notes, plans, and checklist documentation
 
 ## Team Roles
-- Shriivanth: Data ingestion and normalization
-- Bill: Indexing and ranking
+- Bill: Data ingestion and normalization
+- Shriivanth: Indexing and ranking
 - Patrick: Query handling, testing, and demo
