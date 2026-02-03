@@ -1,75 +1,95 @@
 # Baseline Implementation Summary
 
-## ✅ All Components Implemented
+This document summarizes the current baseline implementation for the CS 125 Personalized Nutrition Recommendation System, based on the latest code in this repository.
 
-This document summarizes the complete baseline implementation for the CS 125 Personalized Nutrition Recommendation System.
+##  All Components Implemented
 
-### Phase 1: Data Ingestion ✅
+### Phase 1: Data Ingestion 
 
-**Files Created:**
-- `src/models/food.py` - Food, UserGoals, ConsumedToday dataclasses
-- `src/ingest/usda_fdc_client.py` - USDA FDC API client (already existed)
+**Core files:**
+- `src/logical_view/food.py` - Food dataclass (core schema)
+- `src/logical_view/user_goals.py` - UserGoals dataclass
+- `src/logical_view/consumed_today.py` - ConsumedToday dataclass
+- `src/ingest/usda_fdc_client.py` - USDA FoodData Central API client
 - `src/ingest/dininghall_sources.py` - UCI dining hall web scraper
 - `src/ingest/ingest_pipeline.py` - Unified ingestion pipeline
+- `src/config.py` - Project paths, cache locations, API config
 
 **Features:**
-- Fetches 500-1000 foods from USDA FoodData Central API
-- Scrapes UCI dining hall menus (Brandywine & Anteatery)
+- Fetches a diverse set of foods from USDA FDC (configurable, default max 1000)
+- Scrapes UCI dining hall menus (Brandywine & Anteatery) via HTML parsing
 - Parses nutrition data (calories, protein, carbs, fat, fiber)
-- Infers meal categories (breakfast, lunch, dinner, snack)
-- Infers dietary tags (vegan, vegetarian, gluten-free)
-- Saves to JSON and CSV formats
+- Infers meal categories (breakfast, lunch, dinner, snack, any)
+- Infers dietary tags (vegan, vegetarian, gluten-free, organic)
+- Normalizes to a unified `Food` schema
+- Saves outputs to JSON and CSV
+- Generates summary statistics (counts by source/meal category, averages)
 
-### Phase 2: Indexing ✅
+### Phase 2: Indexing 
 
-**Files Created:**
-- `src/index/food_index.py` - Complete indexing system
-
-**Features:**
-- **Keyword Index**: Inverted index mapping terms → food IDs
-- **Nutrient Vector Index**: Maps food IDs → Food objects with nutrients
-- **Tokenization**: Handles punctuation, lowercasing, special characters
-- **Filtering**: By meal category and calorie budget
-- **Serialization**: Save/load indexes to/from JSON
-
-### Phase 3: Ranking Algorithm ✅
-
-**Files Created:**
-- `src/query/food_ranking.py` - Nutrition-specific ranking
+**Core files:**
+- `src/index/inverted_index.py` - KeywordIndex + NutrientVectorIndex + tokenizer
+- `src/index/build_index.py` - FoodIndexManager (unified search + persistence)
 
 **Features:**
-- **Nutrient Gap Matching**: Scores foods based on remaining targets
-- **Calorie Constraint**: Heavy penalty for exceeding budget
-- **Context Bonuses**: +5 for meal category match, +3 for favorites
-- **Overshoot Penalty**: Reduced score for exceeding nutrient targets
-- **Explanation Generation**: Human-readable reasoning for each recommendation
-- **Customizable Serving Sizes**: Support for any serving size
+- **Keyword Inverted Index**: term → set of food IDs
+- **Nutrient Vector Index**: food_id → Food object
+- **Tokenization**: lowercase + split on non-alphanumeric characters
+- **Filtering**: by meal category and calorie budget
+- **Serialization**: save/load indexes to/from JSON
+- **Unified Search**: query + filters via `FoodIndexManager.search()`
 
-### Phase 4: Testing ✅
+### Phase 3: Ranking 
 
-**Files Created:**
-- `tests/test_food_model.py` - 15+ tests for Food model
-- `tests/test_ingestion_pipeline.py` - 12+ tests for data ingestion
-- `tests/test_food_index.py` - 20+ tests for indexing
-- `tests/test_food_ranking.py` - 18+ tests for ranking
+**Nutrition-Aware Ranking**
+- `src/query/food_ranking.py` - Personalized nutrition ranking + explanations
 
-**Coverage:**
-- Food model creation, serialization, nutrient vectors
-- USDA food parsing, meal category inference, dietary tags
-- Keyword search (OR and AND), nutrient filtering
-- Scoring algorithm, ranking, explanation generation
+**Features:**
+- Nutrient gap matching based on remaining targets
+- Calorie budget constraint (heavy penalty for overshoot)
+- Context bonuses (meal match, favorites)
+- Explanation generation (nutrient contributions + context)
+- Serving size scaling
+- `FoodRanker.recommend()` returns structured recommendation dicts
 
-### Phase 5: Demo ✅
+**Traditional IR Ranking (Baseline IR track)**
+- `src/ranking/tfidf.py` - TF-IDF ranker
+- `src/ranking/bm25.py` - BM25 ranker
 
-**Files Created:**
-- `demo_baseline.py` - Complete end-to-end demonstration
+**Features:**
+- Standard TF-IDF with multiple TF normalization modes
+- BM25 with configurable `k1` and `b` parameters
+- Rankings built from the same keyword index + food collection
+- Used for classic text relevance comparisons against nutrition-aware ranking
+
+### Phase 4: Demo 
+
+**Core file:**
+- `demo_baseline.py`
 
 **Demonstrates:**
 - Sample dataset creation
-- Keyword indexing and search
-- Context-aware ranking
-- Personalized recommendations with explanations
+- Index building and keyword search
+- Nutrition-aware ranking with context
 - Multiple scenarios (breakfast, lunch, low-calorie)
+- Explanation output and nutrient breakdowns
+
+### Phase 5: Testing 
+
+**Core files:**
+- `tests/test_food_model.py` - Food, UserGoals, ConsumedToday
+- `tests/test_ingestion_pipeline.py` - USDA parsing + inference
+- `tests/test_usda_fdc_client.py` - USDA client behavior
+- `tests/test_food_index.py` - Tokenization, indexes, manager search
+- `tests/test_food_ranking.py` - Nutrition ranking + explanations
+- `tests/test_ir_ranking.py` - TF-IDF and BM25 ranking
+
+**Coverage highlights:**
+- Data models serialization, defaults, and nutrient vectors
+- USDA parsing, tag inference, meal classification
+- Keyword search (OR/AND), filtering by meal and calories
+- Ranking logic correctness and ordering
+- IR ranking components (TF/IDF, TF-IDF, BM25)
 
 ## How to Run
 
@@ -89,117 +109,118 @@ python demo_baseline.py
 pytest tests/ -v
 ```
 
-### 4. Run individual components
+### 4. Run the ingestion pipeline
 ```bash
-# Data ingestion
 python -m src.ingest.ingest_pipeline
+```
 
-# Indexing
-python -m src.index.food_index
-
-# Ranking
+### 5. Run the nutrition ranking demo
+```bash
 python -m src.query.food_ranking
 ```
 
 ## Key Design Decisions
 
-### 1. Two-Index Approach
-- **Keyword Index**: For text search (similar to professor's inverted index)
-- **Nutrient Index**: For nutritional filtering and ranking
-- **Rationale**: Balances search flexibility with nutritional optimization
+### 1. Dual-Index Architecture
+- **Keyword Index** for fast text search
+- **Nutrient Index** for filtering + nutrition ranking
+- **Rationale**: supports both IR-style retrieval and nutrition-aware scoring
 
-### 2. Nutrition-Specific Ranking
-Instead of BM25 (text relevance), we use:
-- Nutrient gap scoring (how well food fits remaining targets)
-- Calorie budget enforcement (hard constraint)
-- Context bonuses (meal category, user preferences)
-- **Rationale**: Nutrition recommendations need different logic than text search
+### 2. Two Ranking Tracks
+- **Nutrition-aware ranking** for personalized recommendations
+- **Classic IR ranking** (TF-IDF, BM25) for baseline comparison
+- **Rationale**: separates relevance-by-text from relevance-by-nutrition
 
-### 3. Context-Aware System
-Three types of context:
-- **Explicit**: User-selected meal type
-- **Implicit**: Time of day, remaining targets
-- **Preferences**: Favorite foods
-- **Rationale**: Matches PRD requirements for context modeling
+### 3. Logical View Data Models
+- `Food`, `UserGoals`, `ConsumedToday` in `src/logical_view/`
+- **Rationale**: clean schema boundary between data ingestion and ranking
 
-### 4. Explanation Generation
-Every recommendation includes human-readable explanation:
-- Which nutrients the food provides
-- How it fits into remaining targets
-- Why it was recommended (meal match, favorite, etc.)
-- **Rationale**: Builds trust and helps users understand recommendations
+### 4. Context-Aware Recommendations
+- `RankingContext` models meal type + favorites
+- **Rationale**: aligns with PRD requirements for explicit + preference context
+
+### 5. Explainable Output
+- Each recommendation includes a human-readable explanation
+- **Rationale**: transparency + trust in recommendations
 
 ## Alignment with Implementation Guide
 
 | Phase | Requirement | Status | Implementation |
 |-------|-------------|--------|----------------|
-| 2 | Select nutrition API | ✅ | USDA FDC API |
-| 2 | Fetch 500-1000 foods | ✅ | DataIngestionPipeline |
-| 2 | Parse to structured format | ✅ | parse_usda_food() |
-| 2 | Save as CSV and JSON | ✅ | save_to_csv(), save_to_json() |
-| 3 | Define food schema | ✅ | Food dataclass |
-| 3 | Map nutrients | ✅ | calories, protein, carbs, fat, fiber |
-| 4 | Build keyword index | ✅ | KeywordIndex class |
-| 4 | Build nutrient vector index | ✅ | NutrientVectorIndex class |
-| 5 | Implement ranking algorithm | ✅ | score_food(), rank_foods() |
-| 5 | Nutrient gap matching | ✅ | Scoring logic |
-| 5 | Context bonuses | ✅ | Meal category, favorites |
-| 5 | Calorie constraints | ✅ | Heavy penalty for exceeding |
-| 7 | Define test scenarios | ✅ | 65+ unit tests |
-| 7 | Prepare demo | ✅ | demo_baseline.py |
+| 2 | Select nutrition API | done | USDA FDC API |
+| 2 | Fetch 500-1000 foods | done | `DataIngestionPipeline.fetch_usda_foods()` |
+| 2 | Parse to structured format | done | `parse_usda_food()` |
+| 2 | Save as CSV and JSON | done | `save_to_csv()`, `save_to_json()` |
+| 3 | Define food schema | done | `Food` dataclass |
+| 3 | Map nutrients | done | calories, protein, carbs, fat, fiber |
+| 4 | Build keyword index | done | `KeywordIndex` |
+| 4 | Build nutrient index | done | `NutrientVectorIndex` |
+| 5 | Implement ranking | done | `FoodRanker` + `score_food()` |
+| 5 | Nutrient gap matching | done | `calculate_remaining_targets()` |
+| 5 | Context bonuses | done | meal category + favorites |
+| 5 | Calorie constraints | done | overshoot penalty |
+| 6 | Traditional IR baseline | done | `TFIDFRanker`, `BM25Ranker` |
+| 7 | Define test scenarios | done | 100+ unit tests |
+| 7 | Prepare demo | done | `demo_baseline.py` |
 
 ## Code Organization
 
 ```
 src/
-├── models/
-│   └── food.py              # Data models (Food, UserGoals, ConsumedToday)
+├── logical_view/
+│   ├── food.py              # Food schema
+│   ├── user_goals.py        # User goals schema
+│   └── consumed_today.py    # Consumed nutrients schema
 ├── ingest/
 │   ├── usda_fdc_client.py   # USDA API client
-│   ├── dininghall_sources.py # UCI web scraper
-│   └── ingest_pipeline.py   # Unified pipeline
+│   ├── dininghall_sources.py # UCI dining hall scraper
+│   └── ingest_pipeline.py   # Unified ingestion pipeline
 ├── index/
-│   └── food_index.py        # Keyword & nutrient indexes
-└── query/
-    └── food_ranking.py      # Ranking algorithm
+│   ├── inverted_index.py    # Keyword + nutrient indexes
+│   └── build_index.py       # FoodIndexManager
+├── ranking/
+│   ├── tfidf.py             # TF-IDF ranking
+│   └── bm25.py              # BM25 ranking
+├── query/
+│   └── food_ranking.py      # Nutrition-aware ranking
+├── utils/
+│   └── io.py                # JSON read/write helpers
+└── config.py                # Paths, cache, API config
 
 tests/
-├── test_food_model.py       # Model tests (15+ tests)
-├── test_ingestion_pipeline.py # Ingestion tests (12+ tests)
-├── test_food_index.py       # Index tests (20+ tests)
-└── test_food_ranking.py     # Ranking tests (18+ tests)
+├── test_food_model.py
+├── test_ingestion_pipeline.py
+├── test_usda_fdc_client.py
+├── test_food_index.py
+├── test_food_ranking.py
+└── test_ir_ranking.py
 
 demo_baseline.py             # End-to-end demo
 ```
 
-## Metrics
+## Metrics (Current Repo)
 
-- **Total Lines of Code**: ~2,500
-- **Test Files**: 4
-- **Total Tests**: 65+
-- **Components**: 7 major classes
-- **Functions**: 40+ documented functions
+- **Python LOC (src + demo)**: 2,583
+- **Python LOC (including tests)**: 4,183
+- **Test Files**: 6
+- **Total Tests**: 111
 - **Data Sources**: 2 (USDA + UCI Dining)
 
 ## What's NOT Included (Out of Scope for Baseline)
 
-- SQLite database persistence (mentioned in guide but not required for baseline)
-- iOS app (future work)
-- Machine learning models
+- Database persistence (beyond JSON/CSV artifacts)
+- iOS app or UI layer
+- ML-based personalization models
 - User authentication
 - Barcode scanning
-- Recipe creation
+- Recipe generation
 
 ## Summary
 
 This baseline implementation demonstrates:
 
-1. ✅ **Data Ingestion**: Multi-source (USDA + UCI) with normalization
-2. ✅ **Indexing**: Dual approach (keyword + nutrient) for efficient retrieval
-3. ✅ **Ranking**: Nutrition-specific scoring with context awareness
-4. ✅ **Personalization**: User goals, consumed tracking, preferences
-5. ✅ **Explainability**: Human-readable recommendations
-6. ✅ **Testing**: Comprehensive test coverage
-7. ✅ **Documentation**: Clear code with docstrings and examples
-
-**Status**: Week 3 baseline complete and ready for demo! 🎉
+1.  **Data Ingestion**: multi-source (USDA + UCI) with normalization
+2.  **Indexing**: keyword + nutrient vector indexes with filtering
+3.  **Ranking**: nutrition-aware scoring + IR baselines (TF-IDF/BM25)
+4.  **Personalization**: goals, consumed tracking, favorites, meal context
+5.  **Explainability**: human-readable reasoning per recommendation
