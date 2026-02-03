@@ -370,7 +370,8 @@ def demo_ranking():
     for nutrient, value in remaining.items():
         print(f"  {nutrient.capitalize()}: {value:.1f}")
 
-    print(f"\n=== Top {len(recommendations)} Recommendations for {context.meal_type.capitalize()} ===\n")
+    meal_label = (context.meal_type or "meal").capitalize()
+    print(f"\n=== Top {len(recommendations)} Recommendations for {meal_label} ===\n")
 
     for i, rec in enumerate(recommendations, 1):
         print(f"{i}. {rec['name']} (Score: {rec['score']:.2f})")
