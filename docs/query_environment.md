@@ -20,8 +20,8 @@ Examples:
 
 Behavior:
 - The query string is tokenized using the same normalization rules as indexing
-- Matching FoodItem documents are retrieved via the inverted index
-- Results are ranked (baseline: TF-IDF)
+- Matching Food documents are retrieved via the inverted index
+- Results are ranked (baseline: TF-IDF/BM25 or nutrition-aware ranking)
 
 ---
 
@@ -29,15 +29,14 @@ Behavior:
 In addition to typed keywords, users often have contextual constraints that narrow results.
 
 Baseline context filters (supported in Week 3):
-- `dining_hall`: `Anteatery` or `Brandywine`
-- `meal_period`: `Breakfast`, `Lunch`, `Dinner`
+- `meal_category`: `breakfast`, `lunch`, `dinner`, `snack`, `any`
 - nutrition constraints (metadata filters), such as:
   - calorie range (e.g., 200–600 calories)
   - minimum protein (optional extension)
 
 Examples:
-- Query: `burrito` + filter `dining_hall=Anteatery`
-- Query: `vegan` + filter `meal_period=Dinner`
+- Query: `burrito` + filter `meal_category=lunch`
+- Query: `vegan` + filter `meal_category=dinner`
 - Query: `chicken` + filter `calories <= 600`
 
 Behavior:
@@ -62,15 +61,14 @@ Baseline scope note:
 ---
 
 ## Output Format (Baseline Demo)
-For each query, the system returns a ranked list of FoodItem results with:
+For each query, the system returns a ranked list of Food results with:
 - food name
-- dining hall + meal period (when available)
 - key nutrition facts (when available)
-- relevance score (TF-IDF)
+- relevance score (TF-IDF/BM25) or nutrition score
 
 ---
 
 ## Example Query Scenarios for the Baseline Demo
 1. Typed only: `chicken bowl`
-2. Typed + context: `vegan` with `dining_hall=Brandywine`
+2. Typed + context: `vegan` with `meal_category=lunch`
 3. Typed + nutrition filter: `burrito` with `200 <= calories <= 600`

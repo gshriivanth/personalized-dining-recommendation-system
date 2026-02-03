@@ -190,14 +190,22 @@ class DataIngestionPipeline:
     Main data ingestion pipeline that combines USDA and UCI dining data.
     """
 
-    def __init__(self, usda_api_key: Optional[str] = None):
+    def __init__(
+        self,
+        usda_api_key: Optional[str] = None,
+        usda_rate_limit_per_hour: Optional[int] = None,
+    ):
         """
         Initialize the pipeline.
 
         Args:
             usda_api_key: USDA FDC API key (optional, uses env variable if not provided)
+            usda_rate_limit_per_hour: Optional client-side rate limit (requests per hour)
         """
-        self.usda_client = USDAFoodDataCentralClient(api_key=usda_api_key)
+        self.usda_client = USDAFoodDataCentralClient(
+            api_key=usda_api_key,
+            rate_limit_per_hour=usda_rate_limit_per_hour,
+        )
         self.uci_scraper = UCIDiningScraper()
         self.foods: List[Food] = []
 
@@ -205,7 +213,8 @@ class DataIngestionPipeline:
         self,
         max_foods: int = 1000,
         foods_per_query: int = 50,
-        delay_seconds: float = 0.5
+        delay_seconds: float = 0.5,
+        max_queries: Optional[int] = None,
     ) -> List[Food]:
         """
         Fetch diverse food dataset from USDA FDC API.
@@ -225,6 +234,8 @@ class DataIngestionPipeline:
         all_queries = []
         for category_queries in FOOD_QUERIES.values():
             all_queries.extend(category_queries)
+        if max_queries is not None:
+            all_queries = all_queries[:max_queries]
 
         print(f"Fetching up to {max_foods} USDA foods using {len(all_queries)} queries...")
 
@@ -303,14 +314,20 @@ class DataIngestionPipeline:
     def run_full_pipeline(
         self,
         max_usda_foods: int = 1000,
+        foods_per_query: int = 50,
+        max_queries: Optional[int] = None,
         include_uci: bool = True,
+        delay_seconds: float = 0.5,
     ) -> List[Food]:
         """
         Run the complete ingestion pipeline.
 
         Args:
             max_usda_foods: Maximum USDA foods to fetch
+            foods_per_query: Maximum foods per USDA search query
+            max_queries: Optional cap on number of USDA queries
             include_uci: Whether to include UCI dining hall data
+            delay_seconds: Delay between USDA API calls
 
         Returns:
             Combined list of all Food objects
@@ -318,7 +335,12 @@ class DataIngestionPipeline:
         print("=== Running Full Data Ingestion Pipeline ===\n")
 
         # Fetch USDA foods
-        usda_foods = self.fetch_usda_foods(max_foods=max_usda_foods)
+        usda_foods = self.fetch_usda_foods(
+            max_foods=max_usda_foods,
+            foods_per_query=foods_per_query,
+            delay_seconds=delay_seconds,
+            max_queries=max_queries,
+        )
 
         # Fetch UCI dining foods
         uci_foods = []

@@ -10,12 +10,12 @@ The goal of the baseline milestone is to demonstrate an end-to-end search pipeli
 raw data → logical view → index → query → ranked results.
 
 ## Data Sources
-- Nutritionix API (structured nutrition data in JSON format)
-- Dining hall menu data (HTML pages normalized into structured records)
+- USDA FoodData Central (FDC) API (structured nutrition data in JSON format)
+- UCI dining hall menu data (HTML pages normalized into structured records)
 
 ## System Components
 - Data ingestion and normalization
-- Logical document representation (food items)
+- Logical document representation (Food)
 - Inverted index construction
 - Query processing with filtering and ranking
 
