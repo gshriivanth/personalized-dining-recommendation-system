@@ -16,8 +16,8 @@ import pytest
 import requests
 
 from src.config import USDA_FDC_BASE_URL
-from src.ingestion import usda_fdc_client
-from src.ingestion.usda_fdc_client import USDAFoodDataCentralClient
+from src.ingest import usda_fdc_client
+from src.ingest.usda_fdc_client import USDAFoodDataCentralClient
 
 _CALL_TIMESTAMPS: list[float] = []
 
