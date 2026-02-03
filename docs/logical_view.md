@@ -1,9 +1,8 @@
-# Logical View — FoodItem Document
+# Logical View — Food Document
 
 ## What is a “document” in this system?
-A single **FoodItem** is one document. A FoodItem represents an individual food item that
-can appear in one of UC Irvine’s dining halls (Anteatery or Brandywine) or come from
-Nutritionix as a nutrition-enrichment source.
+A single **Food** is one document. A Food represents an individual food item that
+can come from USDA FoodData Central or UCI Dining menus.
 
 This logical view defines:
 - what fields exist in each document
@@ -21,19 +20,19 @@ foods rather than collections of foods.
 
 ---
 
-## FoodItem Fields
+## Food Fields
 
 ### 1. Identity and Provenance
 These fields uniquely identify a document and record its source.
 
-- `item_id` (string)  
-  Unique identifier for the food item document.
+- `food_id` (int)  
+  Unique identifier for the food item.
 
 - `source` (string)  
-  Indicates the data source (e.g., `uci_dining`, `nutritionix`).
+  Indicates the data source (e.g., `usda_fdc`, `uci_dining_brandywine`).
 
-- `source_ref` (string, optional)  
-  Original identifier or reference from the source system (e.g., URL or Nutritionix ID).
+- `brand` (string, optional)  
+  Brand name for branded foods (USDA FDC), or dining hall name for UCI items.
 
 ---
 
@@ -43,42 +42,30 @@ These fields are tokenized and added to the inverted index.
 - `name` (string)  
   Primary searchable field containing the food item name.
 
-- `description` (string, optional)  
-  Additional descriptive text if available.
-
-- `dietary_tags` (list of strings, optional)  
-  Tags such as `vegan`, `vegetarian`, or `gluten_free`.  
-  These may also be indexed to support queries like “vegan dinner”.
+- `brand` (string, optional)  
+  Included in tokenization when present.
 
 ---
 
-### 3. Dining Context Metadata (Filterable)
+### 3. Context Metadata (Filterable)
 These fields provide structured context and are used for filtering and display.
 
-- `dining_hall` (string, optional)  
-  Name of the dining hall (e.g., `Anteatery`, `Brandywine`).
+- `meal_category` (string)  
+  Meal category inferred from the item (`breakfast`, `lunch`, `dinner`, `snack`, `any`).
 
-- `meal_period` (string, optional)  
-  Meal during which the item is served (`Breakfast`, `Lunch`, `Dinner`).
-
-- `date` (string or date, optional)  
-  Date the menu item is available.
-
-- `station` (string, optional)  
-  Station within the dining hall where the item is served.
+- `tags` (list of strings, optional)  
+  Dietary tags such as `vegan`, `vegetarian`, or `gluten-free`.
 
 ---
 
 ### 4. Nutrition Metadata (Filterable / Ranking Features)
 These numeric fields are not indexed but are used for filtering and ranking.
 
-- `calories` (float, optional)
-- `protein_g` (float, optional)
-- `carbs_g` (float, optional)
-- `fat_g` (float, optional)
-
-These fields are optional because full nutrition information may not be available for
-all dining hall menu items. Nutritionix may be used to supplement missing values.
+- `calories` (float)
+- `protein` (float)
+- `carbs` (float)
+- `fat` (float)
+- `fiber` (float)
 
 ---
 
@@ -87,35 +74,21 @@ all dining hall menu items. Nutritionix may be used to supplement missing values
 ### Indexed Fields
 The inverted index is built using tokens from:
 - `name`
-- `description` (when present)
-- optionally `dietary_tags`
+- `brand` (when present)
 
 ### Metadata Fields
-The following fields are used for filtering and display, but are not indexed:
-- `dining_hall`
-- `meal_period`
-- nutrition metadata (`calories`, `protein_g`, etc.)
-
----
-
-## Team Responsibilities (Logical View)
-
-- **Bill (Data Ingestion)**  
-  Confirms which fields are reliably available from UCI Dining (CampusDish) and Nutritionix.
-
-- **Shriivanth (Indexing & Ranking)**  
-  Defines tokenization rules and indexing decisions for searchable fields.
-
-- **Patrick (Query & Demo)**  
-  Ensures the logical view supports the planned queries, filters, and baseline demo.
+The following fields are used for filtering, ranking, and display, but are not indexed:
+- `meal_category`
+- `tags`
+- nutrition metadata (`calories`, `protein`, `carbs`, `fat`, `fiber`)
 
 ---
 
 ## Baseline Scope Note
 For the Week 3 baseline demo, a minimal subset of fields is sufficient:
-- `item_id`, `source`
+- `food_id`, `source`
 - `name`
-- `dining_hall`, `meal_period`
+- `meal_category`
 - `calories` (optional)
 
 Additional fields can be incorporated in later project iterations.

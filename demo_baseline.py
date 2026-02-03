@@ -10,9 +10,12 @@ This script shows:
 2. Indexing (keyword + nutrient vector)
 3. Ranking algorithm with context-aware recommendations
 """
+import os
 from pathlib import Path
 
 from src.logical_view import Food, UserGoals, ConsumedToday
+from src.ingest.ingest_pipeline import DataIngestionPipeline
+from src.config import DATA_DIR, USDA_FDC_API_KEY_ENV
 from src.index import FoodIndexManager
 from src.query.food_ranking import FoodRanker, RankingContext
 
@@ -70,6 +73,45 @@ def create_sample_dataset() -> list[Food]:
     return foods
 
 
+def load_or_ingest_foods(
+    max_usda_foods: int = 50,
+    foods_per_query: int = 10,
+    max_queries: int = 2,
+    include_uci: bool = False,
+) -> list[Food]:
+    """
+    Load cached foods if available, otherwise ingest a small real-data subset.
+
+    The ingest path is rate-limited to respect USDA FDC API limits.
+    """
+    output_dir = DATA_DIR / "processed"
+    data_path = output_dir / "foods_database.json"
+    if data_path.exists():
+        print(f"Loading cached foods from {data_path}...\n")
+        return DataIngestionPipeline.load_from_json(data_path)
+
+    api_key = os.getenv(USDA_FDC_API_KEY_ENV)
+    if not api_key:
+        raise RuntimeError(
+            f"Missing {USDA_FDC_API_KEY_ENV}. Set the env var or provide "
+            f"{data_path} to run the real-data demo."
+        )
+
+    pipeline = DataIngestionPipeline(
+        usda_api_key=api_key,
+        usda_rate_limit_per_hour=1000,
+    )
+    foods = pipeline.run_full_pipeline(
+        max_usda_foods=max_usda_foods,
+        foods_per_query=foods_per_query,
+        max_queries=max_queries,
+        include_uci=include_uci,
+        delay_seconds=0.0,
+    )
+    pipeline.save_to_json(data_path)
+    return foods
+
+
 def demo_indexing(foods: list[Food]):
     """Demonstrate indexing functionality."""
     print("=== Building Indexes ===\n")
@@ -93,7 +135,7 @@ def demo_indexing(foods: list[Food]):
     return manager
 
 
-def demo_ranking():
+def demo_ranking(foods: list[Food]):
     """Demonstrate ranking algorithm."""
     print("=== Ranking Algorithm Demo ===\n")
 
@@ -134,8 +176,8 @@ def demo_ranking():
     print(f"    - Fat: {goals.fat - consumed.fat:.1f}g")
     print(f"    - Fiber: {goals.fiber - consumed.fiber:.1f}g")
 
-    # Create candidate foods
-    candidate_foods = create_sample_dataset()
+    # Use ingested foods as candidates
+    candidate_foods = foods
 
     # Set up ranking context for lunch
     context = RankingContext(
@@ -219,14 +261,16 @@ def main():
     print("="*70)
     print()
 
-    # Step 1: Create sample dataset
-    foods = create_sample_dataset()
+    # Step 1: Load or ingest real data
+    foods = load_or_ingest_foods()
+    if not foods:
+        raise RuntimeError("No foods available to run demo.")
 
     # Step 2: Demonstrate indexing
     index_manager = demo_indexing(foods)
 
     # Step 3: Demonstrate ranking
-    demo_ranking()
+    demo_ranking(foods)
 
     # Step 4: Demonstrate context awareness
     demo_context_awareness(foods)

@@ -15,7 +15,16 @@ import re
 from src.logical_view import Food
 
 
-def tokenize(text: str) -> List[str]:
+DEFAULT_STOPWORDS: Set[str] = {
+    "a", "an", "and", "the", "of", "to", "in", "on", "for", "with", "by", "or"
+}
+
+
+def tokenize(
+    text: str,
+    remove_stopwords: bool = False,
+    stopwords: Optional[Set[str]] = None,
+) -> List[str]:
     """
     Tokenize text into searchable terms.
 
@@ -32,6 +41,9 @@ def tokenize(text: str) -> List[str]:
     tokens = re.split(r'[^a-z0-9]+', text)
     # Filter out empty strings
     tokens = [t for t in tokens if t]
+    if remove_stopwords:
+        active_stopwords = stopwords if stopwords is not None else DEFAULT_STOPWORDS
+        tokens = [t for t in tokens if t not in active_stopwords]
     return tokens
 
 
