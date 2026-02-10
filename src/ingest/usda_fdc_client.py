@@ -11,7 +11,7 @@ class USDAFoodDataCentralClient:
         self,
         api_key: Optional[str] = None,
         timeout_s: int = 20,
-        rate_limit_per_hour: Optional[int] = None,
+        rate_limit_per_hour: Optional[int] = 1000,
     ):
         #use api_key parameter to override environment variable for testing
         self.api_key = api_key or USDA_FDC_API_KEY
