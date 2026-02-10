@@ -5,21 +5,22 @@ import requests
 
 from src.config import USDA_FDC_API_KEY, USDA_FDC_BASE_URL
 
+USDA_FDC_RATE_LIMIT_PER_HOUR = 1000
+
 #client interface doesn't do any error handling, leaves that up to the caller
 class USDAFoodDataCentralClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
         timeout_s: int = 20,
-        rate_limit_per_hour: Optional[int] = 1000,
     ):
         #use api_key parameter to override environment variable for testing
         self.api_key = api_key or USDA_FDC_API_KEY
         self.timeout_s = timeout_s #max time in secs to wait for an API response
         self._min_interval_s: Optional[float] = None
         self._last_call_s: Optional[float] = None
-        if rate_limit_per_hour and rate_limit_per_hour > 0:
-            self._min_interval_s = 3600.0 / rate_limit_per_hour
+        if USDA_FDC_RATE_LIMIT_PER_HOUR > 0:
+            self._min_interval_s = 3600.0 / USDA_FDC_RATE_LIMIT_PER_HOUR
         if not self.api_key:
             raise RuntimeError(
                 "Missing USDA FDC API key. Set environment variable USDA_FDC_API_KEY."

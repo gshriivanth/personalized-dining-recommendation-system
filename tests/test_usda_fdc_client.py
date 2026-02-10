@@ -167,7 +167,7 @@ def test_integration_search_and_fetch_food() -> None:
     if not api_key:
         pytest.skip("USDA_FDC_API_KEY not set")
 
-    client = USDAFoodDataCentralClient(api_key=api_key, rate_limit_per_hour=1000)
+    client = USDAFoodDataCentralClient(api_key=api_key)
     _rate_limit_calls()
     search_result = client.search_foods("oatmeal", page_size=1)
 

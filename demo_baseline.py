@@ -99,7 +99,6 @@ def load_or_ingest_foods(
 
     pipeline = DataIngestionPipeline(
         usda_api_key=api_key,
-        usda_rate_limit_per_hour=1000,
     )
     foods = pipeline.run_full_pipeline(
         max_usda_foods=max_usda_foods,
