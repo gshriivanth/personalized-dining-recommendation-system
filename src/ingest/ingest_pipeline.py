@@ -193,18 +193,15 @@ class DataIngestionPipeline:
     def __init__(
         self,
         usda_api_key: Optional[str] = None,
-        usda_rate_limit_per_hour: Optional[int] = None,
     ):
         """
         Initialize the pipeline.
 
         Args:
             usda_api_key: USDA FDC API key (optional, uses env variable if not provided)
-            usda_rate_limit_per_hour: Optional client-side rate limit (requests per hour)
         """
         self.usda_client = USDAFoodDataCentralClient(
             api_key=usda_api_key,
-            rate_limit_per_hour=usda_rate_limit_per_hour,
         )
         self.uci_scraper = UCIDiningScraper()
         self.foods: List[Food] = []
