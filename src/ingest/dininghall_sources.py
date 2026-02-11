@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 import requests
 from bs4 import BeautifulSoup, Tag
 import time
+import re
 
 from src.logical_view import Food
 
@@ -114,6 +115,7 @@ class UCIDiningScraper:
         Returns:
             List of DiningMenuItem objects
         """
+        # Soup will be a searchable tree representing the entire web page we are currenlty scrapping
         soup = BeautifulSoup(html, 'html.parser')
         menu_items = []
 
@@ -124,7 +126,7 @@ class UCIDiningScraper:
         for section in meal_sections:
             # Cast to Tag for proper typing
             section_tag = cast(Tag, section)
-            meal_period = self._extract_meal_period(section_tag)
+            meal_period = self._extract_meal_period(section_tag) # Determines meal of the day
 
             # Find individual menu items
             items = section_tag.find_all(['div', 'li', 'article'],
@@ -210,10 +212,10 @@ class UCIDiningScraper:
             return nutrition
 
         text = nutrition_elem.get_text()
-        import re
 
         # Extract nutrition values
-        cal_match = re.search(r'(\d+)\s*cal', text, re.IGNORECASE)
+        # First arg in all search function calls describes the text pattern we are search for
+        cal_match = re.search(r'(\d+)\s*cal', text, re.IGNORECASE) 
         if cal_match:
             nutrition['calories'] = float(cal_match.group(1))
 
