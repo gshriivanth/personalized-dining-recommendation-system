@@ -75,6 +75,11 @@ class UCIDiningScraper:
             timeout_s: Request timeout in seconds
         """
         self.timeout_s = timeout_s
+
+        # We utilize a Session object because we make multiple requests to the uci dining webpage
+        # and we want the state (including the following header and any cookies set on the first request)
+        # to persist throughout the entire scraping process 
+
         self.session = requests.Session()
         # Set user agent to avoid being blocked
         self.session.headers.update({
@@ -128,7 +133,7 @@ class UCIDiningScraper:
 
             for item in items:
                 try:
-                    menu_item = self._parse_menu_item(item, hall, meal_period)
+                    menu_item = self._parse_menu_item(cast(Tag, item), hall, meal_period)
                     if menu_item:
                         menu_items.append(menu_item)
                 except Exception as e:
@@ -136,7 +141,7 @@ class UCIDiningScraper:
 
         return menu_items
 
-    def _extract_meal_period(self, section) -> str:
+    def _extract_meal_period(self, section: Tag) -> str:
         """Extract meal period from section element."""
         text = section.get_text().lower()
 
@@ -149,7 +154,7 @@ class UCIDiningScraper:
         else:
             return 'unknown'
 
-    def _parse_menu_item(self, item_element, hall: str, meal_period: str) -> Optional[DiningMenuItem]:
+    def _parse_menu_item(self, item_element: Tag, hall: str, meal_period: str) -> Optional[DiningMenuItem]:
         """Parse individual menu item element."""
         # Extract item name
         name_elem = item_element.find(['h3', 'h4', 'span', 'div'],
@@ -189,7 +194,7 @@ class UCIDiningScraper:
             dietary_flags=dietary_flags,
         )
 
-    def _extract_nutrition_info(self, element) -> Dict[str, Optional[float]]:
+    def _extract_nutrition_info(self, element: Tag) -> Dict[str, Optional[float]]:
         """Extract nutritional information from element."""
         nutrition: Dict[str, Optional[float]] = {
             'calories': None,
@@ -200,7 +205,7 @@ class UCIDiningScraper:
         }
 
         nutrition_elem = element.find(['div', 'section'],
-                                     class_=lambda x: x and 'nutrition' in str(x).lower() if x else False)
+                                     class_=lambda x: bool(x and 'nutrition' in str(x).lower()))
         if not nutrition_elem:
             return nutrition
 
@@ -230,7 +235,7 @@ class UCIDiningScraper:
 
         return nutrition
 
-    def _extract_dietary_flags(self, element) -> List[str]:
+    def _extract_dietary_flags(self, element: Tag) -> List[str]:
         """Extract dietary flags (vegetarian, vegan, etc.)."""
         flags = []
         text = element.get_text().lower()
@@ -247,7 +252,7 @@ class UCIDiningScraper:
 
         return flags
 
-    def _extract_allergens(self, element) -> List[str]:
+    def _extract_allergens(self, element: Tag) -> List[str]:
         """Extract allergen information."""
         allergens = []
         text = element.get_text().lower()
