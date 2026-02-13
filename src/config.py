@@ -1,5 +1,9 @@
-from pathlib import Path
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 #building a general project root to be used any device with this repository stored locally
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
