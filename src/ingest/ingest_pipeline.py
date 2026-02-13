@@ -20,6 +20,7 @@ from src.ingest.usda_fdc_client import USDAFoodDataCentralClient
 from src.ingest.dininghall_sources import UCIDiningScraper
 from src.logical_view import Food
 from src.config import DATA_DIR
+from src.db import upsert_foods
 
 
 # USDA Nutrient IDs
@@ -393,6 +394,14 @@ class DataIngestionPipeline:
 
         print(f"Saved {len(self.foods)} foods to {output_path}")
 
+    def save_to_db(self) -> None:
+        """Upsert foods into Postgres."""
+        if not self.foods:
+            print("No foods to save")
+            return
+        count = upsert_foods(self.foods)
+        print(f"Upserted {count} foods to Postgres")
+
     @classmethod
     def load_from_json(cls, input_path: Path) -> List[Food]:
         """Load foods from JSON file."""
@@ -448,10 +457,8 @@ def main():
     # Run full pipeline
     pipeline.run_full_pipeline(max_usda_foods=1000, include_uci=True)
 
-    # Save outputs
-    output_dir = DATA_DIR / "processed"
-    pipeline.save_to_json(output_dir / "foods_database.json")
-    pipeline.save_to_csv(output_dir / "foods_database.csv")
+    # Save outputs to Postgres
+    pipeline.save_to_db()
 
     # Print summary
     pipeline.print_summary()
