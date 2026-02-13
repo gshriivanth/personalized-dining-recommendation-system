@@ -11,6 +11,9 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 USDA_FDC_API_KEY_ENV = "USDA_FDC_API_KEY"
 USDA_FDC_API_KEY = os.getenv(USDA_FDC_API_KEY_ENV)
 
+DATABASE_URL_ENV = "DATABASE_URL"
+DATABASE_URL = os.getenv(DATABASE_URL_ENV)
+
 USDA_FDC_BASE_URL = "https://api.nal.usda.gov/fdc/v1"
 
 USDA_FDC_SEARCH_RAW_CACHE = CACHE_DIR / "usda_fdc_search_raw.json"
