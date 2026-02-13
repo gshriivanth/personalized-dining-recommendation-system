@@ -1,6 +1,6 @@
 # Data Directory
 
-This folder stores raw and processed data artifacts.
+This folder stores raw and processed data artifacts from earlier milestones.
 
 ## Structure
 
@@ -9,10 +9,11 @@ This folder stores raw and processed data artifacts.
   - Raw HTML menu pages scraped from UCI Dining
 
 - `processed/`
-  - Normalized `Food` records saved as JSON/CSV
-  - Index artifacts for the baseline demo
+  - Normalized `Food` records saved as JSON/CSV (baseline-era artifacts)
+  - Index artifacts from the baseline demo
 
 ## Notes
 
-- Raw data is **not required** for the baseline demo but is useful for debugging.
-- Processed data is the primary input for indexing and ranking.
+- Raw data was **not required** for the baseline demo but was useful for debugging.
+- In the baseline phase, processed data was the primary input for indexing and ranking.
+- The current pipeline uses database storage instead of local JSON/CSV outputs.

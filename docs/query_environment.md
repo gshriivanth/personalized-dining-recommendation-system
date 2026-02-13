@@ -1,9 +1,9 @@
-# Query Environment — Week 3 Baseline
+# Query Environment — Week 3 Baseline (Historical)
 
 ## Overview
-The query environment describes how users issue queries, what context is available at query time,
-and whether the system supports standing/subscription queries. For this project, the primary users
-are **UC Irvine students** searching for food items served at **Anteatery** and **Brandywine**.
+The query environment described how users issued queries, what context was available at query time,
+and whether the system supported standing/subscription queries during the Week 3 baseline. The primary
+users were **UC Irvine students** searching for food items served at **Anteatery** and **Brandywine**.
 
 ---
 
@@ -28,7 +28,7 @@ Behavior:
 ### 2) Context Queries (Filters + Constraints)
 In addition to typed keywords, users often have contextual constraints that narrow results.
 
-Baseline context filters (supported in Week 3):
+Baseline context filters (supported in Week 3) included:
 - `meal_category`: `breakfast`, `lunch`, `dinner`, `snack`, `any`
 - nutrition constraints (metadata filters), such as:
   - calorie range (e.g., 200–600 calories)
@@ -55,13 +55,13 @@ Example standing queries (future iteration):
 - “Alert me when a meal under **500 calories** is available at **Anteatery**”
 
 Baseline scope note:
-- Subscription queries are **not implemented** in the Week 3 baseline demo
-- The system is designed so they can be added later once menu ingestion updates daily
+- Subscription queries were **not implemented** in the Week 3 baseline demo
+- The system was designed so they could be added later once menu ingestion updated daily
 
 ---
 
 ## Output Format (Baseline Demo)
-For each query, the system returns a ranked list of Food results with:
+For each query, the system returned a ranked list of Food results with:
 - food name
 - key nutrition facts (when available)
 - relevance score (TF-IDF/BM25) or nutrition score

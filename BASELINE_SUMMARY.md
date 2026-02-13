@@ -1,8 +1,8 @@
-# Baseline Implementation Summary
+# Baseline Implementation Summary (Week 3 Snapshot)
 
-This document summarizes the current baseline implementation for the CS 125 Personalized Nutrition Recommendation System, based on the latest code in this repository.
+This document summarizes the baseline implementation as it existed during the Week 3 milestone. The current codebase has moved beyond this baseline (for example, database-backed ingestion), but this summary is kept for reference.
 
-##  All Components Implemented
+## Components Implemented at the Time
 
 ### Phase 1: Data Ingestion 
 
@@ -91,30 +91,30 @@ This document summarizes the current baseline implementation for the CS 125 Pers
 - Ranking logic correctness and ordering
 - IR ranking components (TF/IDF, TF-IDF, BM25)
 
-## How to Run
+## How to Run (Baseline)
 
-### 1. Set up environment
+### 1. Set up environment (baseline)
 ```bash
 export USDA_FDC_API_KEY="your_key_here"
 pip install requests beautifulsoup4 pytest
 ```
 
-### 2. Run the demo
+### 2. Run the demo (baseline)
 ```bash
 python demo_baseline.py
 ```
 
-### 3. Run tests
+### 3. Run tests (baseline)
 ```bash
 pytest tests/ -v
 ```
 
-### 4. Run the ingestion pipeline
+### 4. Run the ingestion pipeline (baseline)
 ```bash
 python -m src.ingest.ingest_pipeline
 ```
 
-### 5. Run the nutrition ranking demo
+### 5. Run the nutrition ranking demo (baseline)
 ```bash
 python -m src.query.food_ranking
 ```
@@ -128,7 +128,7 @@ python -m src.query.food_ranking
 
 ### 2. Two Ranking Tracks
 - **Nutrition-aware ranking** for personalized recommendations
-- **Classic IR ranking** (TF-IDF, BM25) for baseline comparison
+- **Classic IR ranking** (TF-IDF, BM25) for baseline comparison at the time
 - **Rationale**: separates relevance-by-text from relevance-by-nutrition
 
 ### 3. Logical View Data Models
@@ -143,7 +143,7 @@ python -m src.query.food_ranking
 - Each recommendation includes a human-readable explanation
 - **Rationale**: transparency + trust in recommendations
 
-## Alignment with Implementation Guide
+## Alignment with Implementation Guide (Baseline Status)
 
 | Phase | Requirement | Status | Implementation |
 |-------|-------------|--------|----------------|
@@ -159,7 +159,7 @@ python -m src.query.food_ranking
 | 5 | Nutrient gap matching | done | `calculate_remaining_targets()` |
 | 5 | Context bonuses | done | meal category + favorites |
 | 5 | Calorie constraints | done | overshoot penalty |
-| 6 | Traditional IR baseline | done | `TFIDFRanker`, `BM25Ranker` |
+| 6 | Traditional IR baseline (Week 3) | done | `TFIDFRanker`, `BM25Ranker` |
 | 7 | Define test scenarios | done | 100+ unit tests |
 | 7 | Prepare demo | done | `demo_baseline.py` |
 
@@ -198,7 +198,7 @@ tests/
 demo_baseline.py             # End-to-end demo
 ```
 
-## Metrics (Current Repo)
+## Metrics (Baseline Snapshot)
 
 - **Python LOC (src + demo)**: 2,583
 - **Python LOC (including tests)**: 4,183
@@ -206,7 +206,7 @@ demo_baseline.py             # End-to-end demo
 - **Total Tests**: 111
 - **Data Sources**: 2 (USDA + UCI Dining)
 
-## What's NOT Included (Out of Scope for Baseline)
+## What's Not Included (Baseline Scope)
 
 - Database persistence (beyond JSON/CSV artifacts)
 - iOS app or UI layer
@@ -217,10 +217,10 @@ demo_baseline.py             # End-to-end demo
 
 ## Summary
 
-This baseline implementation demonstrates:
+This baseline snapshot demonstrates:
 
 1.  **Data Ingestion**: multi-source (USDA + UCI) with normalization
 2.  **Indexing**: keyword + nutrient vector indexes with filtering
-3.  **Ranking**: nutrition-aware scoring + IR baselines (TF-IDF/BM25)
+3.  **Ranking**: nutrition-aware scoring + IR baselines from that phase (TF-IDF/BM25)
 4.  **Personalization**: goals, consumed tracking, favorites, meal context
 5.  **Explainability**: human-readable reasoning per recommendation
