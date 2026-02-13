@@ -4,9 +4,9 @@
 CS 125 – Next Generation Search Systems (UC Irvine)
 
 ## Project Overview
-This project implements a baseline search and recommendation system for dining and nutrition data. The system ingests real-world food data, constructs an index over searchable fields, and supports keyword-based queries with filtering and ranking.
+This project started as a baseline search and recommendation system for dining and nutrition data. It ingests real-world food data, constructs an index over searchable fields, and supports keyword-based queries with filtering and ranking.
 
-The goal of the baseline milestone is to demonstrate an end-to-end search pipeline:
+The baseline milestone demonstrated an end-to-end search pipeline:
 raw data → logical view → index → query → ranked results.
 
 ## Data Sources
@@ -20,9 +20,8 @@ raw data → logical view → index → query → ranked results.
 - Query processing with filtering and ranking
 
 ## Repository Structure
-- notebooks/   # Optional demos or experiments (not required for final system)
 - src/         # Core Python source code (indexing, ranking, ingestion, queries)
-- data/        # Raw and processed datasets
+- data/        # Raw artifacts and legacy processed datasets
 - docs/        # Design notes, plans, and checklist documentation
 
 ## Team Roles

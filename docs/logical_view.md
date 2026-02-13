@@ -85,10 +85,10 @@ The following fields are used for filtering, ranking, and display, but are not i
 ---
 
 ## Baseline Scope Note
-For the Week 3 baseline demo, a minimal subset of fields is sufficient:
+For the Week 3 baseline demo, a minimal subset of fields was sufficient:
 - `food_id`, `source`
 - `name`
 - `meal_category`
 - `calories` (optional)
 
-Additional fields can be incorporated in later project iterations.
+Additional fields were planned for later iterations.

@@ -1,14 +1,13 @@
-# Index Plan — Week 3 Baseline
+# Index Plan — Week 3 Baseline (Historical)
 
 ## Purpose
-This document describes what data is indexed, how it is indexed, and at what granularity
-for the Personalized Dining Recommendation System. The index plan is designed to support
-the Week 3 baseline demo while remaining extensible for future iterations.
+This document describes what data was indexed, how it was indexed, and at what granularity
+for the Week 3 baseline. The plan was written to support that demo while staying extensible.
 
 ---
 
 ## Indexing Goals
-The baseline index should:
+The baseline index was intended to:
 - support keyword search over food items
 - enable filtering using structured metadata
 - allow ranking of results using TF-IDF/BM25
@@ -70,7 +69,7 @@ Numeric fields are intentionally excluded from the inverted index.
 
 ## Inverted Index Structure
 
-The baseline inverted index maps:
+The baseline inverted index mapped:
 - **token → set of food IDs**
 
 Example structure:
