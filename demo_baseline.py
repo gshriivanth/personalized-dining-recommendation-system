@@ -15,9 +15,10 @@ from pathlib import Path
 
 from src.logical_view import Food, UserGoals, ConsumedToday
 from src.ingest.ingest_pipeline import DataIngestionPipeline
-from src.config import DATA_DIR, USDA_FDC_API_KEY_ENV
+from src.config import USDA_FDC_API_KEY_ENV
 from src.index import FoodIndexManager
 from src.query.food_ranking import FoodRanker, RankingContext
+from src.db import fetch_foods
 
 
 def create_sample_dataset() -> list[Food]:
@@ -84,17 +85,20 @@ def load_or_ingest_foods(
 
     The ingest path is rate-limited to respect USDA FDC API limits.
     """
-    output_dir = DATA_DIR / "processed"
-    data_path = output_dir / "foods_database.json"
-    if data_path.exists():
-        print(f"Loading cached foods from {data_path}...\n")
-        return DataIngestionPipeline.load_from_json(data_path)
+    try:
+        foods = fetch_foods(limit=None)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Missing DATABASE_URL. Set it to your Supabase Postgres URL to run the demo."
+        ) from exc
+    if foods:
+        print(f"Loaded {len(foods)} foods from Postgres.\n")
+        return foods
 
     api_key = os.getenv(USDA_FDC_API_KEY_ENV)
     if not api_key:
         raise RuntimeError(
-            f"Missing {USDA_FDC_API_KEY_ENV}. Set the env var or provide "
-            f"{data_path} to run the real-data demo."
+            f"Missing {USDA_FDC_API_KEY_ENV}. Set the env var to run the real-data demo."
         )
 
     pipeline = DataIngestionPipeline(
@@ -107,8 +111,8 @@ def load_or_ingest_foods(
         include_uci=include_uci,
         delay_seconds=0.0,
     )
-    pipeline.save_to_json(data_path)
-    return foods
+    pipeline.save_to_db()
+    return fetch_foods(limit=None)
 
 
 def demo_indexing(foods: list[Food]):
