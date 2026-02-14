@@ -2,7 +2,6 @@
 """
 Traditional IR ranking algorithms for food search.
 
-Implements TF-IDF and BM25 ranking as described in the professor's Week 3 baseline.
 These are standard information retrieval ranking functions.
 """
 

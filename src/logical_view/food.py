@@ -16,7 +16,7 @@ class Food:
     This is the core data model for the nutrition recommendation system.
     Each food can be searched, indexed, and ranked based on its nutritional profile.
 
-    Fields map to the schema defined in the implementation guide:
+    Fields map to the schema used in this project:
       - food_id: Unique identifier (from USDA FDC or generated)
       - name: Food name (primary text field)
       - calories: Energy in kcal per 100g

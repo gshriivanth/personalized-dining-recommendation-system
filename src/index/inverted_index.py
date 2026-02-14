@@ -51,7 +51,6 @@ class KeywordIndex:
     """
     Keyword inverted index mapping terms to food IDs.
 
-    Similar to professor's inverted index but simplified for food search.
     Maps: term -> list of food_ids containing that term
     """
     # term -> set of food_ids

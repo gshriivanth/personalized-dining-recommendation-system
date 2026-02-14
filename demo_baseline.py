@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Baseline Implementation Demo
+Implementation Demo
 
-Demonstrates the complete baseline implementation of the personalized nutrition
-recommendation system, following the CS 125 implementation guide.
+Demonstrates the end-to-end demo of the personalized nutrition
+recommendation system.
 
 This script shows:
 1. Data ingestion from USDA FDC API and UCI dining halls

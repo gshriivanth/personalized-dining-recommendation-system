@@ -2,10 +2,8 @@
 """
 Nutrition-specific ranking algorithm for food recommendations.
 
-Implements Phase 5 of the implementation guide:
-- Score foods based on how well they fit user's remaining nutrient targets
-- Context bonuses for meal category matching and user preferences
-- Penalty for overshooting targets
+Scores foods based on remaining nutrient targets, context bonuses, and
+penalties for overshooting targets.
 """
 from __future__ import annotations
 
