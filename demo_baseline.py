@@ -17,7 +17,7 @@ from src.logical_view import Food, UserGoals, ConsumedToday
 from src.ingest.ingest_pipeline import DataIngestionPipeline
 from src.config import USDA_FDC_API_KEY_ENV
 from src.index import FoodIndexManager
-from src.query.food_ranking import FoodRanker, RankingContext
+from src.query.food_ranking import FoodRanker, RankingContext, calculate_remaining_targets
 from src.db import fetch_foods
 
 
@@ -172,12 +172,19 @@ def demo_ranking(foods: list[Food]):
     print(f"    - Fiber: {consumed.fiber:.1f}g")
 
     # Remaining targets
+    remaining = calculate_remaining_targets(goals, consumed)
+
+    def format_remaining(nutrient: str, unit: str, fmt: str) -> str:
+        if nutrient not in remaining:
+            return "N/A"
+        return f"{remaining[nutrient]:{fmt}} {unit}"
+
     print(f"\n  Remaining Targets:")
-    print(f"    - Calories: {goals.calories - consumed.calories:.0f} kcal")
-    print(f"    - Protein: {goals.protein - consumed.protein:.1f}g")
-    print(f"    - Carbs: {goals.carbs - consumed.carbs:.1f}g")
-    print(f"    - Fat: {goals.fat - consumed.fat:.1f}g")
-    print(f"    - Fiber: {goals.fiber - consumed.fiber:.1f}g")
+    print(f"    - Calories: {format_remaining('calories', 'kcal', '.0f')}")
+    print(f"    - Protein: {format_remaining('protein', 'g', '.1f')}")
+    print(f"    - Carbs: {format_remaining('carbs', 'g', '.1f')}")
+    print(f"    - Fat: {format_remaining('fat', 'g', '.1f')}")
+    print(f"    - Fiber: {format_remaining('fiber', 'g', '.1f')}")
 
     # Use ingested foods as candidates
     candidate_foods = foods
