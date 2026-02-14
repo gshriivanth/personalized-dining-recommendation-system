@@ -2,8 +2,7 @@
 """
 BM25 (Best Matching 25) ranking for food search.
 
-Implements probabilistic IR ranking as described in the professor's Week 3 baseline.
-BM25 is considered the state-of-the-art for traditional text retrieval.
+BM25 is considered a strong default for traditional text retrieval.
 """
 from __future__ import annotations
 

@@ -1,8 +1,6 @@
 # src/ranking/tfidf.py
 """
 TF-IDF (Term Frequency-Inverse Document Frequency) ranking for food search.
-
-Implements traditional IR ranking as described in the professor's Week 3 baseline.
 """
 from __future__ import annotations
 
