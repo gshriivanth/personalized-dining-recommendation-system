@@ -2,8 +2,7 @@
 """
 Core inverted index data structures for food search.
 
-Implements keyword inverted index and nutrient vector index as described in the
-professor's Week 3 baseline for traditional IR.
+Implements keyword inverted index and nutrient vector index.
 """
 from __future__ import annotations
 
