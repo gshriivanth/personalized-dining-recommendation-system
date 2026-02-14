@@ -11,6 +11,7 @@ This script shows:
 3. Ranking algorithm with context-aware recommendations
 """
 import os
+import re
 from pathlib import Path
 
 import psycopg
@@ -77,9 +78,9 @@ def create_sample_dataset() -> list[Food]:
 
 
 def load_or_ingest_foods(
-    max_usda_foods: int = 50,
+    max_usda_foods: int = 100,
     foods_per_query: int = 10,
-    max_queries: int = 2,
+    max_queries: int = 10,
     include_uci: bool = False,
 ) -> list[Food]:
     """
@@ -129,8 +130,17 @@ def demo_indexing(foods: list[Food]):
 
     print("\n=== Testing Keyword Search ===\n")
 
-    # Test keyword search
-    test_queries = ["chicken", "vegetarian", "protein"]
+    # Derive 3 search terms from the actual loaded food names so queries always return results
+    seen_terms: set[str] = set()
+    test_queries: list[str] = []
+    for food in foods:
+        for word in re.split(r'\W+', food.name.lower()):
+            if len(word) >= 4 and word not in seen_terms:
+                seen_terms.add(word)
+                test_queries.append(word)
+                break
+        if len(test_queries) >= 3:
+            break
 
     for query in test_queries:
         results = manager.search(query=query)
@@ -276,18 +286,28 @@ def main():
     print("="*70)
     print()
 
-    # Step 1: Load or ingest real data
+    # ------------------------------------------------------------------ #
+    # Step 1: Open app / load data & set user context                     #
+    # ------------------------------------------------------------------ #
+    print("--- Step 1: Load data & set user context ---\n")
     foods = load_or_ingest_foods()
     if not foods:
         raise RuntimeError("No foods available to run demo.")
+    print(f"Dataset ready: {len(foods)} foods loaded.\n")
 
-    # Step 2: Demonstrate indexing
-    index_manager = demo_indexing(foods)
-
-    # Step 3: Demonstrate ranking
+    # ------------------------------------------------------------------ #
+    # Step 2: Scenario A — keyword search + top-k recommendations         #
+    #         with per-food explanations                                  #
+    # ------------------------------------------------------------------ #
+    print("--- Step 2: Scenario A — keyword search & ranked recommendations ---\n")
+    demo_indexing(foods)
     demo_ranking(foods)
 
-    # Step 4: Demonstrate context awareness
+    # ------------------------------------------------------------------ #
+    # Step 3 & 4: Change context / user preference → show ranking change  #
+    #             Scenario B — calorie-constrained second example         #
+    # ------------------------------------------------------------------ #
+    print("--- Step 3 & 4: Context change → ranking shift (Scenario B) ---")
     demo_context_awareness(foods)
 
     print("\n" + "="*70)
@@ -298,11 +318,6 @@ def main():
     print("  ✓ Keyword and nutrient vector indexing")
     print("  ✓ Context-aware ranking algorithm")
     print("  ✓ Personalized recommendations with explanations")
-    print()
-    print("Next steps:")
-    print("  - Run tests: pytest tests/")
-    print("  - Run full pipeline: python -m src.ingest.ingest_pipeline")
-    print("  - Run ranking demo: python -m src.query.food_ranking")
     print()
 
 
