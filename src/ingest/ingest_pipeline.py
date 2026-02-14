@@ -73,7 +73,9 @@ def get_nutrient_value(food_data: Dict[str, Any], nutrient_id: int) -> float:
     for nutrient in nutrients:
         if (nutrient.get("nutrientId") == nutrient_id or
             nutrient.get("nutrient", {}).get("id") == nutrient_id):
-            return float(nutrient.get("amount", 0.0))
+            # /foods/search uses "value"; /food/{fdcId} uses "amount"
+            raw = nutrient.get("amount") if nutrient.get("amount") is not None else nutrient.get("value")
+            return float(raw or 0.0)
     return 0.0
 
 

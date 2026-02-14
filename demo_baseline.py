@@ -13,6 +13,8 @@ This script shows:
 import os
 from pathlib import Path
 
+import psycopg
+
 from src.logical_view import Food, UserGoals, ConsumedToday
 from src.ingest.ingest_pipeline import DataIngestionPipeline
 from src.config import USDA_FDC_API_KEY_ENV
@@ -91,6 +93,9 @@ def load_or_ingest_foods(
         raise RuntimeError(
             "Missing DATABASE_URL. Set it to your Supabase Postgres URL to run the demo."
         ) from exc
+    except psycopg.OperationalError as exc:
+        print(f"Warning: Could not connect to Postgres ({exc}). Falling back to sample dataset.\n")
+        return create_sample_dataset()
     if foods:
         print(f"Loaded {len(foods)} foods from Postgres.\n")
         return foods
