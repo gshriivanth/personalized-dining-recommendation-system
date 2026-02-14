@@ -9,7 +9,7 @@ Implements Phase 5 of the implementation guide:
 """
 from __future__ import annotations
 
-from typing import List, Dict, Tuple, Optional, Set, Any
+from typing import List, Dict, Tuple, Optional, Set, Any, Iterable
 from dataclasses import dataclass, field
 
 from src.logical_view import Food, UserGoals, ConsumedToday
@@ -23,6 +23,33 @@ class RankingContext:
     meal_type: Optional[str] = None  # breakfast, lunch, dinner, snack
     time_of_day: Optional[str] = None  # morning, afternoon, evening
     favorites: Set[int] = field(default_factory=set)  # Set of favorite food_ids
+
+
+def filter_foods_by_source(
+    foods: Iterable[Food],
+    sources: Optional[Set[str]] = None,
+    source_prefixes: Optional[List[str]] = None,
+) -> List[Food]:
+    """
+    Filter foods by exact source or source prefix.
+
+    If both sources and prefixes are provided, a food is included if it matches
+    either condition.
+    """
+    if not sources and not source_prefixes:
+        return list(foods)
+
+    source_set = set(sources) if sources else set()
+    prefixes = tuple(source_prefixes or [])
+
+    filtered: List[Food] = []
+    for food in foods:
+        if source_set and food.source in source_set:
+            filtered.append(food)
+            continue
+        if prefixes and any(food.source.startswith(prefix) for prefix in prefixes):
+            filtered.append(food)
+    return filtered
 
 
 def calculate_remaining_targets(
@@ -137,7 +164,9 @@ def rank_foods(
     consumed: ConsumedToday,
     context: RankingContext,
     top_k: int = 10,
-    serving_size: float = 100.0
+    serving_size: float = 100.0,
+    sources: Optional[Set[str]] = None,
+    source_prefixes: Optional[List[str]] = None,
 ) -> List[Tuple[Food, float]]:
     """
     Rank foods and return top-k recommendations.
@@ -149,16 +178,25 @@ def rank_foods(
         context: Ranking context
         top_k: Number of top recommendations to return
         serving_size: Serving size in grams
+        sources: Optional exact sources to include
+        source_prefixes: Optional source prefixes to include
 
     Returns:
         List of (food, score) tuples, sorted by score descending
     """
+    # Filter candidates by source if requested
+    filtered_foods = filter_foods_by_source(
+        candidate_foods,
+        sources=sources,
+        source_prefixes=source_prefixes,
+    )
+
     # Calculate remaining targets
     remaining = calculate_remaining_targets(goals, consumed)
 
     # Score all foods
     scored_foods: List[Tuple[Food, float]] = []
-    for food in candidate_foods:
+    for food in filtered_foods:
         score = score_food(food, remaining, context, serving_size)
         scored_foods.append((food, score))
 
@@ -251,18 +289,22 @@ class FoodRanker:
         consumed: ConsumedToday,
         context: Optional[RankingContext] = None,
         top_k: int = 10,
-        serving_size: float = 100.0
+        serving_size: float = 100.0,
+        sources: Optional[Set[str]] = None,
+        source_prefixes: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Generate ranked food recommendations with explanations.
 
         Args:
-            candidate_foods: List of foods to consider
-            goals: User's daily nutrition goals
-            consumed: Nutrients consumed so far today
-            context: Ranking context
-            top_k: Number of recommendations
-            serving_size: Serving size in grams
+        candidate_foods: List of foods to consider
+        goals: User's daily nutrition goals
+        consumed: Nutrients consumed so far today
+        context: Ranking context
+        top_k: Number of recommendations
+        serving_size: Serving size in grams
+        sources: Optional exact sources to include
+        source_prefixes: Optional source prefixes to include
 
         Returns:
             List of dictionaries with food, score, and explanation
@@ -271,7 +313,16 @@ class FoodRanker:
             context = RankingContext()
 
         # Rank foods
-        ranked = rank_foods(candidate_foods, goals, consumed, context, top_k, serving_size)
+        ranked = rank_foods(
+            candidate_foods,
+            goals,
+            consumed,
+            context,
+            top_k,
+            serving_size,
+            sources=sources,
+            source_prefixes=source_prefixes,
+        )
 
         # Calculate remaining targets for explanations
         remaining = calculate_remaining_targets(goals, consumed)

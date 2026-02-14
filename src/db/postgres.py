@@ -106,17 +106,37 @@ def upsert_foods(foods: List[Food]) -> int:
     return len(foods)
 
 
-def fetch_foods(limit: Optional[int] = None) -> List[Food]:
+def fetch_foods(
+    limit: Optional[int] = None,
+    sources: Optional[Iterable[str]] = None,
+    source_prefixes: Optional[Iterable[str]] = None,
+) -> List[Food]:
     """
     Fetch foods with tags from Postgres.
 
     Args:
         limit: Optional row limit
+        sources: Optional exact sources to include
+        source_prefixes: Optional source prefixes to include (e.g., "uci_dining_")
 
     Returns:
         List of Food objects
     """
     limit_clause = "LIMIT %(limit)s" if limit is not None else ""
+
+    where_clauses = []
+    params: Dict[str, Any] = {"limit": limit} if limit is not None else {}
+
+    if sources:
+        where_clauses.append("f.source = ANY(%(sources)s)")
+        params["sources"] = list(sources)
+
+    if source_prefixes:
+        prefixes = [f"{prefix}%" for prefix in source_prefixes]
+        where_clauses.append("f.source LIKE ANY(%(prefixes)s)")
+        params["prefixes"] = prefixes
+
+    where_sql = f"WHERE {' OR '.join(where_clauses)}" if where_clauses else ""
 
     query = f"""
         SELECT
@@ -134,14 +154,13 @@ def fetch_foods(limit: Optional[int] = None) -> List[Food]:
         FROM foods f
         LEFT JOIN food_tags t
             ON f.source = t.source AND f.food_id = t.food_id
+        {where_sql}
         GROUP BY
             f.source, f.food_id, f.name, f.brand, f.meal_category,
             f.calories, f.protein, f.carbs, f.fat, f.fiber
         ORDER BY f.source, f.food_id
         {limit_clause}
     """
-
-    params = {"limit": limit} if limit is not None else {}
 
     foods: List[Food] = []
     with psycopg.connect(_get_database_url()) as conn:

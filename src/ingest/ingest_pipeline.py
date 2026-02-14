@@ -314,6 +314,7 @@ class DataIngestionPipeline:
         max_usda_foods: int = 1000,
         foods_per_query: int = 50,
         max_queries: Optional[int] = None,
+        include_usda: bool = True,
         include_uci: bool = True,
         delay_seconds: float = 0.5,
     ) -> List[Food]:
@@ -324,6 +325,7 @@ class DataIngestionPipeline:
             max_usda_foods: Maximum USDA foods to fetch
             foods_per_query: Maximum foods per USDA search query
             max_queries: Optional cap on number of USDA queries
+            include_usda: Whether to include USDA FDC data
             include_uci: Whether to include UCI dining hall data
             delay_seconds: Delay between USDA API calls
 
@@ -333,12 +335,14 @@ class DataIngestionPipeline:
         print("=== Running Full Data Ingestion Pipeline ===\n")
 
         # Fetch USDA foods
-        usda_foods = self.fetch_usda_foods(
-            max_foods=max_usda_foods,
-            foods_per_query=foods_per_query,
-            delay_seconds=delay_seconds,
-            max_queries=max_queries,
-        )
+        usda_foods: List[Food] = []
+        if include_usda:
+            usda_foods = self.fetch_usda_foods(
+                max_foods=max_usda_foods,
+                foods_per_query=foods_per_query,
+                delay_seconds=delay_seconds,
+                max_queries=max_queries,
+            )
 
         # Fetch UCI dining foods
         uci_foods = []

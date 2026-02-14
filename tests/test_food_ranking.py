@@ -263,6 +263,44 @@ class TestRankFoods:
         top_foods = [food.name for food, _ in ranked[:2]]
         assert any(name in top_foods for name in ["Chicken Breast", "Salmon"])
 
+    def test_rank_foods_source_filter_exact(self):
+        """Test filtering by exact source."""
+        foods = [
+            Food(1, "USDA Food", 100, 10, 10, 5, 2, source="usda_fdc"),
+            Food(2, "UCI Food", 100, 10, 10, 5, 2, source="uci_dining_brandywine"),
+        ]
+
+        ranked = rank_foods(
+            foods,
+            self.goals,
+            self.consumed,
+            self.context,
+            sources={"usda_fdc"},
+            top_k=5,
+        )
+
+        assert len(ranked) == 1
+        assert ranked[0][0].source == "usda_fdc"
+
+    def test_rank_foods_source_filter_prefix(self):
+        """Test filtering by source prefix."""
+        foods = [
+            Food(1, "USDA Food", 100, 10, 10, 5, 2, source="usda_fdc"),
+            Food(2, "UCI Food", 100, 10, 10, 5, 2, source="uci_dining_anteatery"),
+        ]
+
+        ranked = rank_foods(
+            foods,
+            self.goals,
+            self.consumed,
+            self.context,
+            source_prefixes=["uci_dining_"],
+            top_k=5,
+        )
+
+        assert len(ranked) == 1
+        assert ranked[0][0].source.startswith("uci_dining_")
+
 
 class TestGenerateExplanation:
     """Tests for explanation generation."""
