@@ -11,7 +11,6 @@ This script shows:
 3. Ranking algorithm with context-aware recommendations
 """
 import os
-import re
 from pathlib import Path
 
 import psycopg
@@ -20,8 +19,8 @@ from src.logical_view import Food, UserGoals, ConsumedToday
 from src.ingest.ingest_pipeline import DataIngestionPipeline
 from src.config import USDA_FDC_API_KEY_ENV
 from src.index import FoodIndexManager
-from src.query.food_ranking import FoodRanker, RankingContext, calculate_remaining_targets, get_meals_remaining
-from src.db import fetch_foods
+from src.implicit_ranking.food_ranking import FoodRanker, RankingContext, calculate_remaining_targets, get_meals_remaining
+from src.db import fetch_foods, upsert_foods
 
 
 def create_sample_dataset() -> list[Food]:
@@ -121,6 +120,120 @@ def load_or_ingest_foods(
     return fetch_foods(limit=None)
 
 
+def create_uci_dining_sample() -> list[Food]:
+    """
+    Realistic UCI dining hall menu items used to demonstrate the ingestion pipeline.
+
+    Covers both halls (Brandywine and Anteatery), multiple meal periods, and a
+    variety of macronutrient profiles so that lunch/dinner recommendations look
+    plausible.  Negative food_ids keep them distinct from USDA FDC records.
+    """
+    return [
+        # ── Brandywine Hall — Lunch ──────────────────────────────────────
+        Food(-101, "Brandywine Grilled Chicken Sandwich",
+             450, 35.0, 40.0, 12.0, 2.0,
+             "lunch", [], "Brandywine", "uci_dining_brandywine"),
+        Food(-102, "Brandywine Caesar Salad with Chicken",
+             320, 28.0, 15.0, 18.0, 4.0,
+             "lunch", ["gluten-free"], "Brandywine", "uci_dining_brandywine"),
+        Food(-103, "Brandywine Beef Burger",
+             550, 32.0, 45.0, 25.0, 3.0,
+             "lunch", [], "Brandywine", "uci_dining_brandywine"),
+        Food(-104, "Brandywine Pasta Primavera",
+             380, 12.0, 65.0, 8.0, 5.0,
+             "lunch", ["vegetarian"], "Brandywine", "uci_dining_brandywine"),
+        Food(-105, "Brandywine Tofu Rice Bowl",
+             420, 18.0, 60.0, 12.0, 6.0,
+             "lunch", ["vegan", "vegetarian"], "Brandywine", "uci_dining_brandywine"),
+        # ── Brandywine Hall — Breakfast ──────────────────────────────────
+        Food(-106, "Brandywine Scrambled Eggs",
+             180, 14.0, 2.0, 13.0, 0.0,
+             "breakfast", [], "Brandywine", "uci_dining_brandywine"),
+        Food(-107, "Brandywine Oatmeal with Fresh Fruit",
+             280, 8.0, 48.0, 5.0, 6.0,
+             "breakfast", ["vegetarian"], "Brandywine", "uci_dining_brandywine"),
+        # ── Anteatery Hall — Lunch ───────────────────────────────────────
+        Food(-111, "Anteatery Teriyaki Salmon",
+             380, 35.0, 20.0, 15.0, 1.0,
+             "lunch", ["gluten-free"], "Anteatery", "uci_dining_anteatery"),
+        Food(-112, "Anteatery Vegetable Stir-Fry with Tofu",
+             280, 15.0, 35.0, 8.0, 4.0,
+             "lunch", ["vegan", "vegetarian"], "Anteatery", "uci_dining_anteatery"),
+        Food(-113, "Anteatery BBQ Pulled Pork Rice Bowl",
+             480, 30.0, 55.0, 14.0, 3.0,
+             "lunch", [], "Anteatery", "uci_dining_anteatery"),
+        Food(-114, "Anteatery Black Bean Tacos",
+             320, 14.0, 45.0, 10.0, 8.0,
+             "lunch", ["vegetarian"], "Anteatery", "uci_dining_anteatery"),
+        Food(-115, "Anteatery Greek Salad with Grilled Chicken",
+             350, 26.0, 18.0, 18.0, 4.0,
+             "lunch", ["gluten-free"], "Anteatery", "uci_dining_anteatery"),
+        # ── Anteatery Hall — Breakfast ───────────────────────────────────
+        Food(-116, "Anteatery Yogurt Parfait",
+             250, 12.0, 38.0, 4.0, 2.0,
+             "breakfast", ["vegetarian"], "Anteatery", "uci_dining_anteatery"),
+        Food(-117, "Anteatery Avocado Toast with Egg",
+             340, 16.0, 32.0, 16.0, 6.0,
+             "breakfast", ["vegetarian"], "Anteatery", "uci_dining_anteatery"),
+    ]
+
+
+def demo_data_pipeline() -> list[Food]:
+    """
+    Demonstrate the full ingestion pipeline:
+      A. Fetch UCI Dining Hall menu data
+      B. Upsert to Postgres
+      C. Retrieve the combined dataset from Postgres
+    """
+    print("=== A. Fetching UCI Dining Hall Menus ===\n")
+
+    uci_foods = create_uci_dining_sample()
+
+    brandywine = [f for f in uci_foods if f.source == "uci_dining_brandywine"]
+    anteatery  = [f for f in uci_foods if f.source == "uci_dining_anteatery"]
+
+    print(f"Retrieved {len(uci_foods)} items from UCI Dining Halls:")
+    print(f"  Brandywine Hall: {len(brandywine)} items")
+    for food in brandywine[:3]:
+        print(f"    - {food.name}  ({food.calories:.0f} cal | "
+              f"{food.protein:.0f}g protein | {food.meal_category})")
+    print(f"  Anteatery Hall: {len(anteatery)} items")
+    for food in anteatery[:3]:
+        print(f"    - {food.name}  ({food.calories:.0f} cal | "
+              f"{food.protein:.0f}g protein | {food.meal_category})")
+    print()
+
+    # ── B. Upsert ────────────────────────────────────────────────────────
+    print("=== B. Upserting UCI Foods to Database ===\n")
+    try:
+        count = upsert_foods(uci_foods)
+        print(f"Upserted {count} UCI dining items into Postgres.\n")
+    except Exception as exc:
+        print(f"  (DB upsert skipped — {exc})\n")
+
+    # ── C. Retrieve ──────────────────────────────────────────────────────
+    print("=== C. Retrieving All Foods from Database ===\n")
+    try:
+        all_foods = fetch_foods(limit=None)
+        if all_foods:
+            usda_n = sum(1 for f in all_foods if f.source == "usda_fdc")
+            uci_n  = sum(1 for f in all_foods if f.source.startswith("uci_dining_"))
+            other_n = len(all_foods) - usda_n - uci_n
+            print(f"Retrieved {len(all_foods)} foods from Postgres:")
+            print(f"  - USDA FDC:   {usda_n} foods")
+            print(f"  - UCI Dining: {uci_n} foods")
+            if other_n:
+                print(f"  - Other:      {other_n} foods")
+            print()
+            return all_foods
+    except Exception as exc:
+        print(f"  (DB fetch failed — {exc})\n")
+
+    # Fallback: in-memory dataset when DB is unavailable
+    print("Using in-memory dataset (DB unavailable).\n")
+    return uci_foods + create_sample_dataset()
+
+
 def demo_indexing(foods: list[Food]):
     """Demonstrate indexing functionality."""
     print("=== Building Indexes ===\n")
@@ -130,17 +243,8 @@ def demo_indexing(foods: list[Food]):
 
     print("\n=== Testing Keyword Search ===\n")
 
-    # Derive 3 search terms from the actual loaded food names so queries always return results
-    seen_terms: set[str] = set()
-    test_queries: list[str] = []
-    for food in foods:
-        for word in re.split(r'\W+', food.name.lower()):
-            if len(word) >= 4 and word not in seen_terms:
-                seen_terms.add(word)
-                test_queries.append(word)
-                break
-        if len(test_queries) >= 3:
-            break
+    # Fixed queries that span breakfast, lunch, and plant-based options
+    test_queries: list[str] = ["chicken", "salmon", "rice", "egg", "tofu"]
 
     for query in test_queries:
         results = manager.search(query=query)
@@ -208,7 +312,7 @@ def demo_ranking(foods: list[Food]):
     context = RankingContext(
         meal_type="lunch",
         time_of_day="afternoon",
-        favorites={5, 6}  # Chicken and Salmon are favorites
+        favorites={-101, -111}  # Brandywine Chicken Sandwich and Anteatery Salmon are favorites
     )
 
     meals_left = get_meals_remaining(context)
@@ -296,13 +400,18 @@ def main():
     print()
 
     # ------------------------------------------------------------------ #
-    # Step 1: Open app / load data & set user context                     #
+    # Step 1: Data ingestion pipeline                                     #
+    #   A. Fetch UCI Dining Hall menus                                    #
+    #   B. Upsert to Postgres                                             #
+    #   C. Retrieve combined dataset from Postgres                        #
     # ------------------------------------------------------------------ #
-    print("--- Step 1: Load data & set user context ---\n")
-    foods = load_or_ingest_foods()
+    print("--- Step 1: Data Ingestion Pipeline ---\n")
+    foods = demo_data_pipeline()
     if not foods:
         raise RuntimeError("No foods available to run demo.")
-    print(f"Dataset ready: {len(foods)} foods loaded.\n")
+    print(f"Dataset ready: {len(foods)} foods loaded "
+          f"({sum(1 for f in foods if f.source.startswith('uci_dining_'))} UCI dining, "
+          f"{sum(1 for f in foods if f.source == 'usda_fdc')} USDA FDC).\n")
 
     # ------------------------------------------------------------------ #
     # Step 2: Scenario A — keyword search + top-k recommendations         #

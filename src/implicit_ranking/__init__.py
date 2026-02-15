@@ -5,7 +5,7 @@ Food ranking and query module.
 Provides nutrition-specific ranking algorithms for personalized food recommendations.
 """
 
-from src.query.food_ranking import (
+from src.implicit_ranking.food_ranking import (
     RankingContext,
     calculate_remaining_targets,
     score_food,

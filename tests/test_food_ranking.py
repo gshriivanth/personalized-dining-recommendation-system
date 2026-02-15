@@ -3,7 +3,7 @@
 Tests for food ranking algorithm.
 """
 import pytest
-from src.query.food_ranking import (
+from src.implicit_ranking.food_ranking import (
     calculate_remaining_targets,
     get_meals_remaining,
     score_food,

@@ -3,7 +3,7 @@
 Tests for traditional IR ranking algorithms (TF-IDF and BM25).
 """
 import pytest
-from src.ranking import TFIDFRanker, BM25Ranker, compute_tf, compute_idf
+from src.query_based_ranking import TFIDFRanker, BM25Ranker, compute_tf, compute_idf
 from src.index import KeywordIndex
 from src.logical_view import Food
 
