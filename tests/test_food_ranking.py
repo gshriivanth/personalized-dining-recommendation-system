@@ -5,11 +5,13 @@ Tests for food ranking algorithm.
 import pytest
 from src.query.food_ranking import (
     calculate_remaining_targets,
+    get_meals_remaining,
     score_food,
     rank_foods,
     generate_explanation,
     RankingContext,
-    FoodRanker
+    FoodRanker,
+    NUTRIENT_WEIGHTS,
 )
 from src.logical_view import Food, UserGoals, ConsumedToday
 
@@ -74,6 +76,35 @@ class TestCalculateRemainingTargets:
 
         assert remaining['calories'] == 0.0
         assert remaining['protein'] == 0.0
+
+
+class TestGetMealsRemaining:
+    """Tests for the meals-remaining helper."""
+
+    def test_morning_returns_3(self):
+        assert get_meals_remaining(RankingContext(time_of_day="morning")) == 3
+
+    def test_breakfast_meal_type_returns_3(self):
+        assert get_meals_remaining(RankingContext(meal_type="breakfast")) == 3
+
+    def test_afternoon_returns_2(self):
+        assert get_meals_remaining(RankingContext(time_of_day="afternoon")) == 2
+
+    def test_lunch_meal_type_returns_2(self):
+        assert get_meals_remaining(RankingContext(meal_type="lunch")) == 2
+
+    def test_evening_returns_1(self):
+        assert get_meals_remaining(RankingContext(time_of_day="evening")) == 1
+
+    def test_dinner_meal_type_returns_1(self):
+        assert get_meals_remaining(RankingContext(meal_type="dinner")) == 1
+
+    def test_no_context_defaults_to_2(self):
+        assert get_meals_remaining(RankingContext()) == 2
+
+    def test_time_of_day_takes_priority_over_snack(self):
+        # snack meal_type with no time_of_day → defaults to 2
+        assert get_meals_remaining(RankingContext(meal_type="snack")) == 2
 
 
 class TestScoreFood:
@@ -170,6 +201,37 @@ class TestScoreFood:
         # 50g serving should have different score than 100g
         assert score_100g != score_50g
 
+    def test_score_food_per_meal_calorie_penalty(self):
+        """Food consuming the full daily budget is penalised when split across 2 meals."""
+        # A food with exactly the total remaining calories should overshoot the per-meal
+        # budget when meals_remaining=2 and therefore score lower than with meals_remaining=1.
+        food = Food(1, "Big Meal", 1500, 10, 20, 10, 5)
+
+        score_one_meal = score_food(food, self.remaining, self.context,
+                                    serving_size=100.0, meals_remaining=1)
+        score_two_meals = score_food(food, self.remaining, self.context,
+                                     serving_size=100.0, meals_remaining=2)
+
+        # With 2 meals left the per-meal budget is 750 kcal; the 1500 kcal food
+        # overshoots and must be penalised relative to the single-meal scenario.
+        assert score_two_meals < score_one_meal
+
+    def test_score_food_protein_weighted_higher(self):
+        """Verify that protein has a higher scoring weight than carbs."""
+        assert NUTRIENT_WEIGHTS['protein'] > NUTRIENT_WEIGHTS['carbs']
+
+        # A food that fills the protein target should outscore an otherwise
+        # identical food that fills only the carbs target.
+        remaining = {'calories': 800.0, 'protein': 50.0, 'carbs': 50.0, 'fat': 0.0, 'fiber': 0.0}
+        protein_food = Food(1, "Protein Food", 100, 50, 0, 0, 0)   # fills protein target
+        carb_food    = Food(2, "Carb Food",    100,  0, 50, 0, 0)   # fills carbs target
+
+        ctx = RankingContext()
+        score_protein = score_food(protein_food, remaining, ctx, meals_remaining=1)
+        score_carb    = score_food(carb_food,    remaining, ctx, meals_remaining=1)
+
+        assert score_protein > score_carb
+
 
 class TestRankFoods:
     """Tests for ranking multiple foods."""
@@ -259,8 +321,9 @@ class TestRankFoods:
             top_k=5
         )
 
-        # Chicken and Salmon (high protein) should be near the top
-        top_foods = [food.name for food, _ in ranked[:2]]
+        # Chicken and Salmon (high protein, matching meal category) should appear
+        # in the top 3 thanks to the elevated protein weight.
+        top_foods = [food.name for food, _ in ranked[:3]]
         assert any(name in top_foods for name in ["Chicken Breast", "Salmon"])
 
     def test_rank_foods_source_filter_exact(self):
@@ -352,6 +415,28 @@ class TestGenerateExplanation:
         explanation = generate_explanation(food, self.remaining, context_with_fav)
 
         assert "favorite" in explanation.lower()
+
+    def test_generate_explanation_references_meal_target(self):
+        """Explanation percentages should be relative to per-meal targets."""
+        food = Food(1, "Chicken Breast", 165, 31, 0, 3.6, 0)
+
+        explanation = generate_explanation(food, self.remaining, self.context,
+                                           meals_remaining=2)
+
+        assert "meal target" in explanation
+
+    def test_generate_explanation_per_meal_percentage_differs_from_daily(self):
+        """Percentage shown should reflect the per-meal budget, not the full daily remaining."""
+        food = Food(1, "Test Food", 500, 10, 10, 5, 2)
+        remaining = {'calories': 1000.0}
+
+        # With 2 meals remaining the per-meal budget is 500 kcal → 100%
+        explanation_2 = generate_explanation(food, remaining, self.context, meals_remaining=2)
+        # With 1 meal remaining the per-meal budget is 1000 kcal → 50%
+        explanation_1 = generate_explanation(food, remaining, self.context, meals_remaining=1)
+
+        assert "100%" in explanation_2
+        assert "50%" in explanation_1
 
 
 class TestFoodRanker:
