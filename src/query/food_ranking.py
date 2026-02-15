@@ -12,6 +12,15 @@ from dataclasses import dataclass, field
 
 from src.logical_view import Food, UserGoals, ConsumedToday
 
+# Relative importance of each macro when scoring a food against per-meal targets.
+# Protein is weighted highest to encourage protein-rich recommendations.
+NUTRIENT_WEIGHTS: Dict[str, float] = {
+    'protein': 2.5,
+    'carbs': 1.0,
+    'fat': 1.0,
+    'fiber': 1.2,
+}
+
 
 @dataclass
 class RankingContext:
@@ -80,68 +89,95 @@ def calculate_remaining_targets(
     return remaining
 
 
+def get_meals_remaining(context: RankingContext) -> int:
+    """
+    Estimate how many meals are left in the day based on context.
+
+    Mapping:
+        morning  / breakfast → 3  (breakfast, lunch, dinner)
+        afternoon / lunch    → 2  (lunch, dinner)
+        evening  / dinner    → 1  (dinner only)
+        default              → 2
+    """
+    time = (context.time_of_day or "").lower()
+    meal = (context.meal_type or "").lower()
+
+    if time == "morning" or meal == "breakfast":
+        return 3
+    elif time == "evening" or meal == "dinner":
+        return 1
+    else:
+        # afternoon, lunch, snack, or unspecified → assume 2 meals remain
+        return 2
+
+
 def score_food(
     food: Food,
     remaining: Dict[str, float],
     context: RankingContext,
-    serving_size: float = 100.0
+    serving_size: float = 100.0,
+    meals_remaining: int = 1,
 ) -> float:
     """
-    Score a food based on how well it fits remaining nutrient targets.
+    Score a food based on how well it fits the per-meal nutrient targets.
+
+    Remaining daily targets are divided evenly across meals_remaining so that
+    a food covering 100% of the day's budget does not rank above one that
+    covers an appropriate single-meal portion.
 
     Scoring factors:
-    1. Nutrient gap matching - foods that provide needed nutrients score higher
-    2. Calorie constraint - heavy penalty for exceeding calorie budget
+    1. Nutrient gap matching (weighted by NUTRIENT_WEIGHTS, protein prioritised)
+    2. Calorie constraint - scored against per-meal calorie budget
     3. Context bonus - boost for matching meal category
-    4. User preference bonus - boost for favorite foods
+    4. User preference bonus - boost for favourite foods
 
     Args:
         food: Food to score
-        remaining: Remaining nutrient targets
-        context: Ranking context (meal type, favorites, etc.)
+        remaining: Remaining daily nutrient targets
+        context: Ranking context (meal type, favourites, etc.)
         serving_size: Serving size in grams (default 100g)
+        meals_remaining: How many meals are left today (divides remaining targets)
 
     Returns:
         Score value (higher is better)
     """
     score = 0.0
     multiplier = serving_size / 100.0
+    meals = max(1, meals_remaining)
 
-    # 1. Nutrient gap matching
-    # Score positively if food provides needed nutrients without overshooting
+    # 1. Nutrient gap matching against per-meal targets
     for nutrient in ['protein', 'carbs', 'fat', 'fiber']:
         if nutrient not in remaining:
             continue
 
-        target_remaining = remaining[nutrient]
-        if target_remaining <= 0:
+        per_meal_target = remaining[nutrient] / meals
+        if per_meal_target <= 0:
             continue
 
-        # Get food's nutrient value (scaled by serving size)
         food_nutrient = getattr(food, nutrient) * multiplier
+        weight = NUTRIENT_WEIGHTS.get(nutrient, 1.0)
 
         if food_nutrient > 0:
-            if food_nutrient <= target_remaining:
-                # Perfect: provides exactly what's needed
-                # Score proportionally: closer to target = higher score
-                score += (food_nutrient / target_remaining) * 10
+            if food_nutrient <= per_meal_target:
+                # Ideal: fills some or all of this meal's share
+                score += (food_nutrient / per_meal_target) * 10 * weight
             else:
-                # Overshooting: still good but penalized
-                overshoot = food_nutrient - target_remaining
-                overshoot_penalty = (overshoot / target_remaining) * 2
-                score += max(0, 5 - overshoot_penalty)
+                # Overshoots per-meal share — penalise proportionally
+                overshoot = food_nutrient - per_meal_target
+                overshoot_penalty = (overshoot / per_meal_target) * 2
+                score += max(0, 5 * weight - overshoot_penalty)
 
-    # 2. Calorie constraint (hard constraint)
+    # 2. Calorie constraint against per-meal calorie budget
     if 'calories' in remaining:
         food_calories = food.calories * multiplier
-        calorie_remaining = remaining['calories']
+        per_meal_calories = remaining['calories'] / meals
 
-        if food_calories <= calorie_remaining:
-            # Within budget - bonus for using available calories
-            score += (food_calories / calorie_remaining) * 5
+        if food_calories <= per_meal_calories:
+            # Within per-meal budget — reward proportional calorie usage
+            score += (food_calories / per_meal_calories) * 5
         else:
-            # Over budget - heavy penalty
-            overshoot_ratio = (food_calories - calorie_remaining) / calorie_remaining
+            # Exceeds per-meal share — heavy penalty
+            overshoot_ratio = (food_calories - per_meal_calories) / per_meal_calories
             score -= 20 * (1 + overshoot_ratio)
 
     # 3. Context bonus: meal category match
@@ -149,7 +185,7 @@ def score_food(
                               food.meal_category == 'any'):
         score += 5
 
-    # 4. User preference bonus (if food in favorites)
+    # 4. User preference bonus (if food in favourites)
     if food.food_id in context.favorites:
         score += 3
 
@@ -192,10 +228,13 @@ def rank_foods(
     # Calculate remaining targets
     remaining = calculate_remaining_targets(goals, consumed)
 
-    # Score all foods
+    # Determine per-meal divisor from context
+    meals_remaining = get_meals_remaining(context)
+
+    # Score all foods against per-meal targets
     scored_foods: List[Tuple[Food, float]] = []
     for food in filtered_foods:
-        score = score_food(food, remaining, context, serving_size)
+        score = score_food(food, remaining, context, serving_size, meals_remaining)
         scored_foods.append((food, score))
 
     # Sort by score descending
@@ -209,56 +248,59 @@ def generate_explanation(
     food: Food,
     remaining: Dict[str, float],
     context: RankingContext,
-    serving_size: float = 100.0
+    serving_size: float = 100.0,
+    meals_remaining: int = 1,
 ) -> str:
     """
     Generate explanation for why a food was recommended.
 
+    Percentages are shown relative to the per-meal target (remaining / meals_remaining)
+    so the user understands how much of *this meal's* budget the food covers.
+
     Args:
         food: Recommended food
-        remaining: Remaining nutrient targets
+        remaining: Remaining daily nutrient targets
         context: Ranking context
         serving_size: Serving size in grams
+        meals_remaining: How many meals are left today
 
     Returns:
         Human-readable explanation string
     """
     explanations = []
     multiplier = serving_size / 100.0
-
-    # Check which nutrients this food provides significantly
-    significant_nutrients: List[str] = []
+    meals = max(1, meals_remaining)
 
     for nutrient in ['protein', 'carbs', 'fat', 'fiber']:
         if nutrient not in remaining:
             continue
 
-        target_remaining = remaining[nutrient]
-        if target_remaining <= 0:
+        per_meal_target = remaining[nutrient] / meals
+        if per_meal_target <= 0:
             continue
 
         food_nutrient = getattr(food, nutrient) * multiplier
 
-        # If food provides >= 20% of remaining target, it's significant
-        if food_nutrient >= target_remaining * 0.2:
-            percentage = min(100, (food_nutrient / target_remaining) * 100)
+        # Show nutrient if it covers >= 20% of this meal's share
+        if food_nutrient >= per_meal_target * 0.2:
+            percentage = (food_nutrient / per_meal_target) * 100
             nutrient_name = nutrient.capitalize()
             explanations.append(
                 f"{nutrient_name}: {food_nutrient:.1f}g "
-                f"({percentage:.0f}% of remaining {target_remaining:.1f}g)"
+                f"({percentage:.0f}% of meal target {per_meal_target:.1f}g)"
             )
 
-    # Add calorie info
+    # Calorie info vs per-meal calorie budget
     if 'calories' in remaining:
         food_calories = food.calories * multiplier
-        calorie_remaining = remaining['calories']
-        percentage = min(100, (food_calories / calorie_remaining) * 100)
+        per_meal_calories = remaining['calories'] / meals
+        percentage = (food_calories / per_meal_calories) * 100
         explanations.insert(0,
             f"Calories: {food_calories:.0f} kcal "
-            f"({percentage:.0f}% of remaining {calorie_remaining:.0f} kcal)"
+            f"({percentage:.0f}% of meal target {per_meal_calories:.0f} kcal)"
         )
 
-    # Add context info
+    # Context info
     if context.meal_type and food.meal_category == context.meal_type:
         explanations.append(f"Good for {context.meal_type}")
 
@@ -324,11 +366,12 @@ class FoodRanker:
 
         # Calculate remaining targets for explanations
         remaining = calculate_remaining_targets(goals, consumed)
+        meals_remaining = get_meals_remaining(context)
 
         # Generate recommendations with explanations
         recommendations = []
         for food, score in ranked:
-            explanation = generate_explanation(food, remaining, context, serving_size)
+            explanation = generate_explanation(food, remaining, context, serving_size, meals_remaining)
 
             recommendations.append({
                 'food': food,

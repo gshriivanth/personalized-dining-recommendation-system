@@ -20,7 +20,7 @@ from src.logical_view import Food, UserGoals, ConsumedToday
 from src.ingest.ingest_pipeline import DataIngestionPipeline
 from src.config import USDA_FDC_API_KEY_ENV
 from src.index import FoodIndexManager
-from src.query.food_ranking import FoodRanker, RankingContext, calculate_remaining_targets
+from src.query.food_ranking import FoodRanker, RankingContext, calculate_remaining_targets, get_meals_remaining
 from src.db import fetch_foods
 
 
@@ -211,10 +211,19 @@ def demo_ranking(foods: list[Food]):
         favorites={5, 6}  # Chicken and Salmon are favorites
     )
 
+    meals_left = get_meals_remaining(context)
     print(f"\n  Context:")
     print(f"    - Meal Type: {context.meal_type}")
     print(f"    - Time of Day: {context.time_of_day}")
+    print(f"    - Meals Remaining Today: {meals_left}")
     print(f"    - Favorite Foods: {len(context.favorites)}")
+
+    print(f"\n  Per-Meal Targets ({meals_left} meal(s) left):")
+    for nutrient, value in remaining.items():
+        per_meal = value / meals_left
+        unit = "kcal" if nutrient == "calories" else "g"
+        fmt = ".0f" if nutrient == "calories" else ".1f"
+        print(f"    - {nutrient.capitalize()}: {per_meal:{fmt}} {unit}")
 
     # Generate recommendations
     ranker = FoodRanker()
