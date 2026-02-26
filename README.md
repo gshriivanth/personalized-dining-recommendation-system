@@ -20,8 +20,3 @@ raw data → logical view → index → query → ranked results.
 - src/         # Core Python source code (indexing, ranking, ingestion, queries)
 - data/        # Raw artifacts and legacy processed datasets
 - docs/        # Design notes, plans, and checklist documentation
-
-## Team Roles
-- Bill: Data ingestion and normalization
-- Shriivanth: Indexing and ranking
-- Patrick: Query handling, testing, and demo
