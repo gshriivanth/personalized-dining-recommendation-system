@@ -1,8 +1,5 @@
 # Personalized Dining Recommendation System
 
-## Course
-CS 125 – Next Generation Search Systems (UC Irvine)
-
 ## Project Overview
 This project started as a baseline search and recommendation system for dining and nutrition data. It ingests real-world food data, constructs an index over searchable fields, and supports keyword-based queries with filtering and ranking.
 
