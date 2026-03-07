@@ -1,6 +1,8 @@
-# src/ranking/tfidf.py
+# src/query_based_ranking/bm25.py
 """
-TF-IDF (Term Frequency-Inverse Document Frequency) ranking for food search.
+BM25 (Best Matching 25) ranking for food search.
+
+BM25 is considered a strong default for traditional text retrieval.
 """
 from __future__ import annotations
 
@@ -12,85 +14,89 @@ from src.logical_view import Food
 from src.index.inverted_index import tokenize, KeywordIndex
 
 
-def compute_tf(term_freq: int, doc_length: int, normalization: str = "log") -> float:
+class BM25Ranker:
     """
-    Compute term frequency component.
+    BM25 ranking for food search.
     
-    Args:
-        term_freq: Raw term frequency in document
-        doc_length: Total terms in document
-        normalization: "raw", "log", or "normalized"
+    BM25 formula:
+    score(D, Q) = Σ IDF(qi) * (f(qi, D) * (k1 + 1)) / (f(qi, D) + k1 * (1 - b + b * |D| / avgdl))
     
-    Returns:
-        TF score
-    """
-    if normalization == "raw":
-        return float(term_freq)
-    elif normalization == "log":
-        return 1.0 + math.log10(term_freq) if term_freq > 0 else 0.0
-    elif normalization == "normalized":
-        return term_freq / doc_length if doc_length > 0 else 0.0
-    else:
-        raise ValueError(f"Unknown normalization: {normalization}")
-
-
-def compute_idf(num_docs: int, doc_freq: int) -> float:
-    """
-    Compute inverse document frequency.
-    
-    Args:
-        num_docs: Total number of documents in collection
-        doc_freq: Number of documents containing the term
-    
-    Returns:
-        IDF score
-    """
-    if doc_freq == 0:
-        return 0.0
-    return math.log10(num_docs / doc_freq)
-
-
-class TFIDFRanker:
-    """
-    TF-IDF ranking for food search.
+    where:
+    - IDF(qi) = log((N - df(qi) + 0.5) / (df(qi) + 0.5))
+    - f(qi, D) = term frequency of qi in document D
+    - |D| = document length
+    - avgdl = average document length
+    - k1, b = tuning parameters (typically k1=1.5, b=0.75)
     """
     
-    def __init__(self, keyword_index: KeywordIndex, foods: Dict[int, Food]):
+    def __init__(
+        self,
+        keyword_index: KeywordIndex,
+        foods: Dict[int, Food],
+        k1: float = 1.5,
+        b: float = 0.75
+    ):
         """
-        Initialize TF-IDF ranker.
+        Initialize BM25 ranker.
         
         Args:
             keyword_index: Keyword inverted index
             foods: Dictionary mapping food_id to Food object
+            k1: Term frequency saturation parameter (default 1.5)
+            b: Length normalization parameter (default 0.75)
         """
         self.keyword_index = keyword_index
         self.foods = foods
+        self.k1 = k1
+        self.b = b
         self.num_docs = len(foods)
         
-        # Precompute document lengths (number of terms in each food name + brand)
+        # Precompute document lengths
         self.doc_lengths: Dict[int, int] = {}
+        total_length = 0
+        
         for food_id, food in foods.items():
             tokens = tokenize(food.name)
             if food.brand:
                 tokens.extend(tokenize(food.brand))
-            self.doc_lengths[food_id] = len(tokens)
+            doc_length = len(tokens)
+            self.doc_lengths[food_id] = doc_length
+            total_length += doc_length
+        
+        # Compute average document length
+        self.avg_doc_length = total_length / self.num_docs if self.num_docs > 0 else 0.0
     
-    def score_document(
-        self,
-        food_id: int,
-        query_terms: List[str],
-        tf_normalization: str = "log"
-    ) -> float:
+    def compute_idf(self, term: str) -> float:
         """
-        Compute TF-IDF score for a single document.
+        Compute BM25 IDF for a term.
+        
+        Args:
+            term: Query term
+        
+        Returns:
+            IDF score
+        """
+        doc_freq = len(self.keyword_index.index.get(term, set()))
+        
+        # BM25 IDF formula
+        numerator = self.num_docs - doc_freq + 0.5
+        denominator = doc_freq + 0.5
+        
+        if denominator == 0:
+            return 0.0
+        
+        return math.log((numerator / denominator) + 1.0)
+    
+    def score_document(self, food_id: int, query_terms: List[str]) -> float:
+        """
+        Compute BM25 score for a single document.
         
         Args:
             food_id: Document ID to score
             query_terms: List of query terms
-            tf_normalization: TF normalization method
         
         Returns:
-            TF-IDF score
+            BM25 score
         """
         food = self.foods.get(food_id)
         if not food:
@@ -110,31 +116,31 @@ class TFIDFRanker:
             if term not in term_counts:
                 continue
             
-            # Compute TF
-            tf = compute_tf(term_counts[term], doc_length, tf_normalization)
+            # Term frequency in document
+            tf = term_counts[term]
             
             # Compute IDF
-            doc_freq = len(self.keyword_index.index.get(term, set()))
-            idf = compute_idf(self.num_docs, doc_freq)
+            idf = self.compute_idf(term)
             
-            # Add to score
-            score += tf * idf
+            # BM25 formula
+            numerator = tf * (self.k1 + 1.0)
+            denominator = tf + self.k1 * (1.0 - self.b + self.b * doc_length / self.avg_doc_length)
+            
+            score += idf * (numerator / denominator)
         
         return score
     
     def rank(
         self,
         query: str,
-        top_k: int = 10,
-        tf_normalization: str = "log"
+        top_k: int = 10
     ) -> List[Tuple[Food, float]]:
         """
-        Rank documents using TF-IDF.
+        Rank documents using BM25.
         
         Args:
             query: Search query
             top_k: Number of top results to return
-            tf_normalization: TF normalization method
         
         Returns:
             List of (Food, score) tuples, sorted by score descending
@@ -149,7 +155,7 @@ class TFIDFRanker:
         # Score each candidate
         scored_foods = []
         for food_id in candidate_ids:
-            score = self.score_document(food_id, query_terms, tf_normalization)
+            score = self.score_document(food_id, query_terms)
             if score > 0:
                 food = self.foods.get(food_id)
                 if food:
