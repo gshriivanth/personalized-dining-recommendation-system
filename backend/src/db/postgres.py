@@ -36,6 +36,16 @@ def _food_rows(foods: Iterable[Food]) -> List[Dict[str, Any]]:
             "carbs": food.carbs,
             "fat": food.fat,
             "fiber": food.fiber,
+            "saturated_fat": food.saturated_fat,
+            "trans_fat": food.trans_fat,
+            "cholesterol": food.cholesterol,
+            "sodium": food.sodium,
+            "sugars": food.sugars,
+            "added_sugars": food.added_sugars,
+            "vitamin_d": food.vitamin_d,
+            "calcium": food.calcium,
+            "iron": food.iron,
+            "potassium": food.potassium,
         })
     return rows
 
@@ -67,11 +77,15 @@ def upsert_foods(foods: List[Food]) -> int:
                 """
                 INSERT INTO foods (
                     source, food_id, name, brand, meal_category,
-                    calories, protein, carbs, fat, fiber, updated_at
+                    calories, protein, carbs, fat, fiber,
+                    saturated_fat, trans_fat, cholesterol, sodium, sugars,
+                    added_sugars, vitamin_d, calcium, iron, potassium, updated_at
                 )
                 VALUES (
                     %(source)s, %(food_id)s, %(name)s, %(brand)s, %(meal_category)s,
-                    %(calories)s, %(protein)s, %(carbs)s, %(fat)s, %(fiber)s, now()
+                    %(calories)s, %(protein)s, %(carbs)s, %(fat)s, %(fiber)s,
+                    %(saturated_fat)s, %(trans_fat)s, %(cholesterol)s, %(sodium)s, %(sugars)s,
+                    %(added_sugars)s, %(vitamin_d)s, %(calcium)s, %(iron)s, %(potassium)s, now()
                 )
                 ON CONFLICT (source, food_id) DO UPDATE SET
                     name = EXCLUDED.name,
@@ -82,6 +96,16 @@ def upsert_foods(foods: List[Food]) -> int:
                     carbs = EXCLUDED.carbs,
                     fat = EXCLUDED.fat,
                     fiber = EXCLUDED.fiber,
+                    saturated_fat = EXCLUDED.saturated_fat,
+                    trans_fat = EXCLUDED.trans_fat,
+                    cholesterol = EXCLUDED.cholesterol,
+                    sodium = EXCLUDED.sodium,
+                    sugars = EXCLUDED.sugars,
+                    added_sugars = EXCLUDED.added_sugars,
+                    vitamin_d = EXCLUDED.vitamin_d,
+                    calcium = EXCLUDED.calcium,
+                    iron = EXCLUDED.iron,
+                    potassium = EXCLUDED.potassium,
                     updated_at = now()
                 """,
                 rows,
@@ -150,6 +174,16 @@ def fetch_foods(
             f.carbs,
             f.fat,
             f.fiber,
+            f.saturated_fat,
+            f.trans_fat,
+            f.cholesterol,
+            f.sodium,
+            f.sugars,
+            f.added_sugars,
+            f.vitamin_d,
+            f.calcium,
+            f.iron,
+            f.potassium,
             COALESCE(array_agg(t.tag) FILTER (WHERE t.tag IS NOT NULL), '{{}}') AS tags
         FROM foods f
         LEFT JOIN food_tags t
@@ -157,7 +191,9 @@ def fetch_foods(
         {where_sql}
         GROUP BY
             f.source, f.food_id, f.name, f.brand, f.meal_category,
-            f.calories, f.protein, f.carbs, f.fat, f.fiber
+            f.calories, f.protein, f.carbs, f.fat, f.fiber,
+            f.saturated_fat, f.trans_fat, f.cholesterol, f.sodium, f.sugars,
+            f.added_sugars, f.vitamin_d, f.calcium, f.iron, f.potassium
         ORDER BY f.source, f.food_id
         {limit_clause}
     """
@@ -179,6 +215,16 @@ def fetch_foods(
                     carbs,
                     fat,
                     fiber,
+                    saturated_fat,
+                    trans_fat,
+                    cholesterol,
+                    sodium,
+                    sugars,
+                    added_sugars,
+                    vitamin_d,
+                    calcium,
+                    iron,
+                    potassium,
                     tags,
                 ) = row
                 foods.append(
@@ -194,6 +240,16 @@ def fetch_foods(
                         tags=list(tags) if tags else [],
                         brand=brand or "",
                         source=source,
+                        saturated_fat=saturated_fat,
+                        trans_fat=trans_fat,
+                        cholesterol=cholesterol,
+                        sodium=sodium,
+                        sugars=sugars,
+                        added_sugars=added_sugars,
+                        vitamin_d=vitamin_d,
+                        calcium=calcium,
+                        iron=iron,
+                        potassium=potassium,
                     )
                 )
     return foods

@@ -18,6 +18,18 @@ class FoodResponse(BaseModel):
     fiber: float
     tags: List[str] = []
 
+    # Extended nutrition label fields (None if unavailable)
+    saturated_fat: Optional[float] = None
+    trans_fat: Optional[float] = None
+    cholesterol: Optional[float] = None
+    sodium: Optional[float] = None
+    sugars: Optional[float] = None
+    added_sugars: Optional[float] = None
+    vitamin_d: Optional[float] = None
+    calcium: Optional[float] = None
+    iron: Optional[float] = None
+    potassium: Optional[float] = None
+
     # Dining-hall-specific fields (null for USDA foods)
     hall: Optional[str] = None
     station: Optional[str] = None

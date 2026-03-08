@@ -25,11 +25,21 @@ from src.db import upsert_foods
 
 # USDA Nutrient IDs
 NUTRIENT_IDS = {
-    "energy": 1008,  # Energy (kcal)
-    "protein": 1003,  # Protein (g)
-    "carbs": 1005,  # Carbohydrate, by difference (g)
-    "fat": 1004,  # Total lipid (fat) (g)
-    "fiber": 1079,  # Fiber, total dietary (g)
+    "energy": 1008,         # Energy (kcal)
+    "protein": 1003,        # Protein (g)
+    "carbs": 1005,          # Carbohydrate, by difference (g)
+    "fat": 1004,            # Total lipid (fat) (g)
+    "fiber": 1079,          # Fiber, total dietary (g)
+    "saturated_fat": 1258,  # Fatty acids, total saturated (g)
+    "trans_fat": 1257,      # Fatty acids, total trans (g)
+    "cholesterol": 1253,    # Cholesterol (mg)
+    "sodium": 1093,         # Sodium (mg)
+    "sugars": 1063,         # Sugars, total including NLEA (g)
+    "added_sugars": 1235,   # Added sugars (g)
+    "vitamin_d": 1114,      # Vitamin D (mcg)
+    "calcium": 1087,        # Calcium (mg)
+    "iron": 1089,           # Iron (mg)
+    "potassium": 1092,      # Potassium (mg)
 }
 
 
@@ -97,7 +107,7 @@ def parse_usda_food(food_data: Dict[str, Any]) -> Optional[Food]:
         description = food_data.get("description", "Unknown Food")
         brand = food_data.get("brandOwner", "")
 
-        # Extract nutrients
+        # Extract core nutrients
         calories = get_nutrient_value(food_data, NUTRIENT_IDS["energy"])
         protein = get_nutrient_value(food_data, NUTRIENT_IDS["protein"])
         carbs = get_nutrient_value(food_data, NUTRIENT_IDS["carbs"])
@@ -107,6 +117,10 @@ def parse_usda_food(food_data: Dict[str, Any]) -> Optional[Food]:
         # Skip foods with no nutritional data
         if calories == 0 and protein == 0 and carbs == 0 and fat == 0:
             return None
+
+        def _opt(key: str) -> Optional[float]:
+            v = get_nutrient_value(food_data, NUTRIENT_IDS[key])
+            return v if v != 0.0 else None
 
         # Infer meal category and tags
         meal_category = infer_meal_category(description)
@@ -124,6 +138,16 @@ def parse_usda_food(food_data: Dict[str, Any]) -> Optional[Food]:
             tags=tags,
             brand=brand,
             source="usda_fdc",
+            saturated_fat=_opt("saturated_fat"),
+            trans_fat=_opt("trans_fat"),
+            cholesterol=_opt("cholesterol"),
+            sodium=_opt("sodium"),
+            sugars=_opt("sugars"),
+            added_sugars=_opt("added_sugars"),
+            vitamin_d=_opt("vitamin_d"),
+            calcium=_opt("calcium"),
+            iron=_opt("iron"),
+            potassium=_opt("potassium"),
         )
     except Exception as e:
         print(f"Error parsing USDA food: {e}")
