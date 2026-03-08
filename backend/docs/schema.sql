@@ -110,6 +110,9 @@ create table if not exists user_favorites (
     primary key (user_id, source, food_id)
 );
 
+-- Migration: add food_name if the table was created before it was added.
+alter table user_favorites add column if not exists food_name text not null default '';
+
 alter table user_favorites enable row level security;
 drop policy if exists "user_favorites: own rows" on user_favorites;
 create policy "user_favorites: own rows" on user_favorites
@@ -133,6 +136,10 @@ create table if not exists user_consumption_log (
     meal_type      text,
     consumed_at    timestamptz not null default now()
 );
+
+-- Migration: add food_name and meal_type if the table was created before they were added.
+alter table user_consumption_log add column if not exists food_name text not null default '';
+alter table user_consumption_log add column if not exists meal_type text;
 
 alter table user_consumption_log enable row level security;
 drop policy if exists "consumption_log: own rows" on user_consumption_log;
