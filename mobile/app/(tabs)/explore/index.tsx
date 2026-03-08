@@ -94,7 +94,7 @@ export default function ExploreScreen() {
               <Text style={styles.emptyText}>
                 {submittedQuery
                   ? `No results for "${submittedQuery}"`
-                  : "Set your goals to get personalized picks"}
+                  : "Favorite a non-dining food to see it here, or search above"}
               </Text>
             </View>
           }

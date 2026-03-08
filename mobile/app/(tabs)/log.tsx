@@ -5,18 +5,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Colors, Spacing, Radius, Typography, Shadow } from "@/constants/theme";
-import { useProfileStore } from "@/lib/store/profile";
 import { getConsumedToday } from "@/lib/api/profile";
 import type { MealLogEntry } from "@/lib/types/user";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
-  const { userId } = useProfileStore();
-
   const { data, isLoading } = useQuery({
-    queryKey: ["consumed-today", userId],
-    queryFn: () => (userId ? getConsumedToday(userId) : Promise.resolve(null)),
-    enabled: !!userId,
+    queryKey: ["consumed-today"],
+    queryFn: () => getConsumedToday(),
   });
 
   const entries = data?.entries ?? [];

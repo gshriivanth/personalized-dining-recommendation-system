@@ -9,10 +9,12 @@ import {
   Pressable,
   Alert,
 } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Spacing, Radius, Typography, Shadow } from "@/constants/theme";
 import { useProfileStore } from "@/lib/store/profile";
 import { updateGoals } from "@/lib/api/profile";
+import { supabase } from "@/lib/supabase";
 import type { NutritionGoals } from "@/lib/types/user";
 
 const GOAL_FIELDS: { key: keyof NutritionGoals; label: string; unit: string }[] = [
@@ -25,10 +27,33 @@ const GOAL_FIELDS: { key: keyof NutritionGoals; label: string; unit: string }[] 
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { userId, name, goals, setGoals } = useProfileStore();
+  const { name, goals, setGoals, reset } = useProfileStore();
 
   const [editedGoals, setEditedGoals] = useState<NutritionGoals>({ ...goals });
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          setLoggingOut(true);
+          try {
+            await supabase.auth.signOut();
+            reset();
+            router.replace("/(auth)/login");
+          } catch (err: any) {
+            Alert.alert("Error", err.message);
+          } finally {
+            setLoggingOut(false);
+          }
+        },
+      },
+    ]);
+  }
 
   function handleChange(key: keyof NutritionGoals, value: string) {
     const parsed = value === "" ? null : parseFloat(value);
@@ -36,10 +61,9 @@ export default function ProfileScreen() {
   }
 
   async function handleSave() {
-    if (!userId) return;
     setSaving(true);
     try {
-      const updated = await updateGoals(userId, editedGoals);
+      const updated = await updateGoals(editedGoals);
       setGoals(updated);
       Alert.alert("Saved", "Your goals have been updated.");
     } catch (err: any) {
@@ -90,6 +114,14 @@ export default function ProfileScreen() {
           <Text style={styles.saveBtnText}>{saving ? "Saving..." : "Save Goals"}</Text>
         </Pressable>
       </View>
+
+      <Pressable
+        style={[styles.logoutBtn, loggingOut && styles.saveBtnDisabled]}
+        onPress={handleLogout}
+        disabled={loggingOut}
+      >
+        <Text style={styles.logoutBtnText}>{loggingOut ? "Signing out..." : "Sign Out"}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -138,4 +170,13 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: { color: Colors.textInverted, fontWeight: "600" },
+  logoutBtn: {
+    marginTop: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.pill,
+    padding: Spacing.sm,
+    alignItems: "center",
+  },
+  logoutBtnText: { color: Colors.textMuted, fontWeight: "600" },
 });
