@@ -77,11 +77,14 @@ def search_foods(
             new_foods = [f for f in parsed if f is not None and _is_non_dining(f)]
 
             if new_foods:
-                upsert_foods(new_foods)
-                for food in new_foods:
-                    index.add_food(food)
                 non_dining = new_foods[:top_k]
-                logger.info("USDA fallback: ingested %d foods for query %r", len(new_foods), q)
+                logger.info("USDA fallback: fetched %d foods for query %r", len(new_foods), q)
+                try:
+                    upsert_foods(new_foods)
+                    for food in new_foods:
+                        index.add_food(food)
+                except Exception as db_exc:
+                    logger.warning("USDA fallback: DB upsert failed for query %r (results still returned): %s", q, db_exc)
         except Exception as exc:
             logger.warning("USDA fallback failed for query %r: %s", q, exc)
 
@@ -103,6 +106,26 @@ def recommend_explore(
     if body.query:
         candidates = index.search(query=body.query, meal_type=body.meal_type)
         candidates = [f for f in candidates if _is_non_dining(f)]
+
+        if not candidates:
+            # Fallback: query USDA FDC API directly
+            try:
+                client = USDAFoodDataCentralClient()
+                raw = client.search_foods(body.query, page_size=min(body.top_k, 25))
+                parsed = [parse_usda_food(item) for item in raw.get("foods", [])]
+                new_foods = [f for f in parsed if f is not None and _is_non_dining(f)]
+                if new_foods:
+                    candidates = new_foods
+                    logger.info("USDA fallback in recommend: fetched %d foods for query %r", len(new_foods), body.query)
+                    try:
+                        upsert_foods(new_foods)
+                        for food in new_foods:
+                            index.add_food(food)
+                    except Exception as db_exc:
+                        logger.warning("USDA fallback: DB upsert failed for query %r (results still returned): %s", body.query, db_exc)
+            except Exception as exc:
+                logger.warning("USDA fallback failed in recommend for query %r: %s", body.query, exc)
+
     elif body.user_id:
         # No query — only surface foods the user has explicitly favorited
         fav_rows = user_db.get_favorites(body.user_id)
