@@ -12,12 +12,14 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import * as Linking from "expo-linking";
 import { Colors, Spacing, Radius, Typography } from "@/constants/theme";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
 
   async function handleLogin() {
     if (!email || !password) return;
@@ -28,6 +30,25 @@ export default function LoginScreen() {
       Alert.alert("Sign in failed", error.message);
     } else {
       router.replace("/(tabs)");
+    }
+  }
+
+  async function handleResendConfirmation() {
+    if (!email) {
+      Alert.alert("Enter your email", "Please enter the email you signed up with.");
+      return;
+    }
+    setResending(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: Linking.createURL("/callback") },
+    });
+    setResending(false);
+    if (error) {
+      Alert.alert("Resend failed", error.message);
+    } else {
+      Alert.alert("Email sent", "Check your inbox for a new confirmation link.");
     }
   }
 
@@ -64,6 +85,16 @@ export default function LoginScreen() {
           disabled={loading}
         >
           <Text style={styles.btnText}>{loading ? "Signing in..." : "Sign In"}</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleResendConfirmation}
+          disabled={resending}
+          style={styles.link}
+        >
+          <Text style={styles.linkText}>
+            {resending ? "Sending confirmation..." : "Resend confirmation email"}
+          </Text>
         </Pressable>
 
         <Pressable onPress={() => router.push("/(auth)/signup")} style={styles.link}>

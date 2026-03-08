@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { router } from "expo-router";
+import * as Linking from "expo-linking";
 import { supabase } from "@/lib/supabase";
 import { Colors, Spacing, Radius, Typography } from "@/constants/theme";
 
@@ -23,19 +24,28 @@ export default function SignupScreen() {
   async function handleSignup() {
     if (!email || !password || !name) return;
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const redirectUrl = Linking.createURL("/callback");
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         // Passed to the new user's raw_user_meta_data so the DB trigger
         // can populate profiles.name automatically.
         data: { name },
+        // Redirect back into the app after email confirmation.
+        emailRedirectTo: redirectUrl,
       },
     });
     setLoading(false);
     if (error) {
       Alert.alert("Sign up failed", error.message);
     } else {
+      if (!data.session) {
+        Alert.alert(
+          "Check your email",
+          "We sent a confirmation link. Please confirm your email, then return to finish setup."
+        );
+      }
       // After sign-up, go to onboarding to set nutrition goals.
       router.replace("/(auth)/onboarding");
     }
