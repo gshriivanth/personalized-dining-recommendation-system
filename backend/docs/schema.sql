@@ -51,10 +51,32 @@ create table if not exists foods (
     carbs double precision,
     fat double precision,
     fiber double precision,
+    saturated_fat double precision,
+    trans_fat double precision,
+    cholesterol double precision,
+    sodium double precision,
+    sugars double precision,
+    added_sugars double precision,
+    vitamin_d double precision,
+    calcium double precision,
+    iron double precision,
+    potassium double precision,
     created_at timestamptz default now(),
     updated_at timestamptz default now(),
     primary key (source, food_id)
 );
+
+-- Migrations: add extended nutrition columns to existing tables.
+alter table foods add column if not exists saturated_fat double precision;
+alter table foods add column if not exists trans_fat double precision;
+alter table foods add column if not exists cholesterol double precision;
+alter table foods add column if not exists sodium double precision;
+alter table foods add column if not exists sugars double precision;
+alter table foods add column if not exists added_sugars double precision;
+alter table foods add column if not exists vitamin_d double precision;
+alter table foods add column if not exists calcium double precision;
+alter table foods add column if not exists iron double precision;
+alter table foods add column if not exists potassium double precision;
 
 create table if not exists food_tags (
     source text not null,
