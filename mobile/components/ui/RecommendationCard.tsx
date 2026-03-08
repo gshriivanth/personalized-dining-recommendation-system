@@ -67,6 +67,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: "rgba(2, 62, 138, 0.35)",
     ...Shadow.card,
   },
   pressed: {

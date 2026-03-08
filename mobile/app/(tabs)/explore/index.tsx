@@ -14,7 +14,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, Radius, Typography } from "@/constants/theme";
 import { RecommendationCard } from "@/components/ui/RecommendationCard";
+import { FoodDetailModal } from "@/components/ui/FoodDetailModal";
 import { useExploreRecommendations } from "@/hooks/useExploreRecommendations";
+import type { RecommendationItem } from "@/lib/types/food";
 
 const MEAL_FILTERS = ["Any", "Breakfast", "Lunch", "Dinner", "Snack"] as const;
 
@@ -23,6 +25,7 @@ export default function ExploreScreen() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState<string | undefined>(undefined);
   const [mealFilter, setMealFilter] = useState<string | undefined>(undefined);
+  const [selectedItem, setSelectedItem] = useState<RecommendationItem | null>(null);
 
   const { data, isLoading, error } = useExploreRecommendations(submittedQuery, mealFilter);
 
@@ -87,19 +90,31 @@ export default function ExploreScreen() {
         <FlatList
           data={data?.recommendations ?? []}
           keyExtractor={(item) => `${item.food.source}:${item.food.food_id}`}
-          renderItem={({ item }) => <RecommendationCard item={item} variant="explore" />}
+          renderItem={({ item }) => (
+            <RecommendationCard
+              item={item}
+              variant="explore"
+              onPress={() => setSelectedItem(item)}
+            />
+          )}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={styles.emptyText}>
                 {submittedQuery
                   ? `No results for "${submittedQuery}"`
-                  : "Favorite a non-dining food to see it here, or search above"}
+                  : "Favorite a non-dining hall food to see it here, or search above"}
               </Text>
             </View>
           }
         />
       )}
+
+      <FoodDetailModal
+        item={selectedItem}
+        visible={selectedItem !== null}
+        onClose={() => setSelectedItem(null)}
+      />
     </View>
   );
 }
