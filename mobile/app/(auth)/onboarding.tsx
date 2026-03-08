@@ -14,7 +14,8 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Spacing, Radius, Typography } from "@/constants/theme";
 import { useProfileStore } from "@/lib/store/profile";
-import { createProfile } from "@/lib/api/profile";
+import { getProfile, updateGoals } from "@/lib/api/profile";
+import { getAccessToken } from "@/lib/supabase";
 import type { NutritionGoals } from "@/lib/types/user";
 
 const GOAL_PRESETS: { label: string; description: string; goals: NutritionGoals }[] = [
@@ -50,9 +51,19 @@ export default function OnboardingScreen() {
     if (!name.trim()) return;
     setLoading(true);
     try {
+      const token = await getAccessToken();
+      if (!token) {
+        Alert.alert(
+          "Confirm your email",
+          "Please confirm your email address before getting recommendations."
+        );
+        return;
+      }
+
       const goals = GOAL_PRESETS[selectedPreset].goals;
-      const profile = await createProfile(name.trim(), goals);
-      setProfile(profile.user_id, profile.name, profile.goals);
+      await updateGoals(goals);
+      const profile = await getProfile();
+      setProfile(profile.user_id, profile.name || name.trim(), profile.goals);
       router.replace("/(tabs)");
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Could not create profile.");
