@@ -1,5 +1,5 @@
 // app/(tabs)/profile.tsx — Profile and goals editor
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing, Radius, Typography, Shadow } from "@/constants/theme";
 import { useProfileStore } from "@/lib/store/profile";
 import { updateGoals } from "@/lib/api/profile";
@@ -32,6 +33,21 @@ export default function ProfileScreen() {
   const [editedGoals, setEditedGoals] = useState<NutritionGoals>({ ...goals });
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+  const [memberSince, setMemberSince] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setEmail(data.user.email ?? null);
+        if (data.user.created_at) {
+          const d = new Date(data.user.created_at);
+          setMemberSince(d.toLocaleDateString("en-US", { month: "long", year: "numeric" }));
+        }
+      }
+    });
+  }, []);
 
   async function handleLogout() {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -53,6 +69,23 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  }
+
+  async function handleChangePassword() {
+    if (!email) return;
+    setChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      Alert.alert(
+        "Check your email",
+        `A password reset link has been sent to ${email}.`
+      );
+    } catch (err: any) {
+      Alert.alert("Error", err.message ?? "Could not send reset email.");
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   function handleChange(key: keyof NutritionGoals, value: string) {
@@ -82,8 +115,40 @@ export default function ProfileScreen() {
       <Text style={styles.title}>Profile</Text>
       {name && <Text style={styles.name}>{name}</Text>}
 
+      {/* Account Information */}
+      <View style={[styles.section, styles.sectionSpacing]}>
+        <Text style={styles.sectionTitle}>Account Information</Text>
+
+        <View style={styles.infoRow}>
+          <Ionicons name="mail-outline" size={16} color={Colors.textMuted} style={styles.infoIcon} />
+          <View style={styles.infoTextGroup}>
+            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={styles.infoValue}>{email ?? "—"}</Text>
+          </View>
+        </View>
+
+        <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+          <Ionicons name="calendar-outline" size={16} color={Colors.textMuted} style={styles.infoIcon} />
+          <View style={styles.infoTextGroup}>
+            <Text style={styles.infoLabel}>Member since</Text>
+            <Text style={styles.infoValue}>{memberSince ?? "—"}</Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={[styles.changePasswordBtn, changingPassword && styles.saveBtnDisabled]}
+          onPress={handleChangePassword}
+          disabled={changingPassword || !email}
+        >
+          <Ionicons name="lock-closed-outline" size={15} color={Colors.explore.primary} />
+          <Text style={styles.changePasswordText}>
+            {changingPassword ? "Sending..." : "Send Password Reset Email"}
+          </Text>
+        </Pressable>
+      </View>
+
       {/* Goals editor */}
-      <View style={styles.section}>
+      <View style={[styles.section, styles.sectionSpacing]}>
         <Text style={styles.sectionTitle}>Daily Nutrition Goals</Text>
         <Text style={styles.sectionHint}>
           Leave a field blank to exclude it from recommendations.
@@ -137,8 +202,35 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     ...Shadow.card,
   },
+  sectionSpacing: { marginBottom: Spacing.md },
   sectionTitle: { ...Typography.subheading, marginBottom: 4 },
   sectionHint: { ...Typography.label, marginBottom: Spacing.md },
+  // Account info rows
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  infoIcon: { width: 20 },
+  infoTextGroup: { flex: 1 },
+  infoLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 1 },
+  infoValue: { fontSize: 14, color: Colors.text, fontWeight: "500" },
+  changePasswordBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  changePasswordText: {
+    fontSize: 13,
+    color: Colors.explore.primary,
+    fontWeight: "600",
+  },
+  // Goals rows
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
