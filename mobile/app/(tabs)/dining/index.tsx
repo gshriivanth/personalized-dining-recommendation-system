@@ -1,5 +1,5 @@
 // app/(tabs)/dining/index.tsx
-// Dining Hall tab — dark forest green header, hall toggle, meal period tabs, ranked recs.
+// Dining Hall tab — navy header, hall toggle, meal period tabs, ranked recs.
 import React, { useState } from "react";
 import {
   View,
@@ -12,10 +12,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Spacing, Radius, Typography } from "@/constants/theme";
 import { RecommendationCard } from "@/components/ui/RecommendationCard";
+import { FoodDetailModal } from "@/components/ui/FoodDetailModal";
 import { HallStatusBadge } from "@/components/ui/HallStatusBadge";
 import { useDiningRecommendations } from "@/hooks/useDiningRecommendations";
 import { useQuery } from "@tanstack/react-query";
 import { fetchHalls } from "@/lib/api/dining";
+import type { RecommendationItem } from "@/lib/types/food";
 
 const HALLS = [
   { id: "brandywine", label: "Brandywine" },
@@ -33,6 +35,7 @@ export default function DiningScreen() {
   const insets = useSafeAreaInsets();
   const [selectedHall, setSelectedHall] = useState("brandywine");
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
+  const [selectedItem, setSelectedItem] = useState<RecommendationItem | null>(null);
 
   const { data: halls } = useQuery({ queryKey: ["halls"], queryFn: fetchHalls });
   const hallStatus = halls?.find((h) => h.id === selectedHall);
@@ -98,7 +101,11 @@ export default function DiningScreen() {
           data={data?.recommendations ?? []}
           keyExtractor={(item) => `${item.food.source}:${item.food.food_id}`}
           renderItem={({ item }) => (
-            <RecommendationCard item={item} variant="dining" />
+            <RecommendationCard
+              item={item}
+              variant="dining"
+              onPress={() => setSelectedItem(item)}
+            />
           )}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
@@ -108,6 +115,12 @@ export default function DiningScreen() {
           }
         />
       )}
+
+      <FoodDetailModal
+        item={selectedItem}
+        visible={selectedItem !== null}
+        onClose={() => setSelectedItem(null)}
+      />
     </View>
   );
 }
