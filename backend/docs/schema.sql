@@ -1,4 +1,44 @@
 -- Schema for Personalized Dining Recommendation System
+-- Apply with: python scripts/init_db.py (from backend/)
+--
+-- NOTE: auth.users is managed entirely by Supabase Auth.
+-- You must enable Email/Password sign-in in the Supabase dashboard
+-- (Authentication -> Providers -> Email) before using user-facing endpoints.
+
+-- ---------------------------------------------------------------------------
+-- User profiles (extends auth.users; row created by trigger on sign-up)
+-- ---------------------------------------------------------------------------
+
+create table if not exists profiles (
+    user_id    uuid primary key references auth.users(id) on delete cascade,
+    name       text not null default '',
+    created_at timestamptz not null default now()
+);
+
+-- Trigger: automatically create a profiles row when a new auth user signs up.
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into public.profiles (user_id, name)
+  values (new.id, coalesce(new.raw_user_meta_data->>'name', ''))
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure handle_new_user();
+
+alter table profiles enable row level security;
+drop policy if exists "profiles: own row" on profiles;
+create policy "profiles: own row" on profiles
+  for all using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Foods (USDA + UCI dining)
+-- ---------------------------------------------------------------------------
 
 create table if not exists foods (
     source text not null,
@@ -28,14 +68,19 @@ create table if not exists food_tags (
 );
 
 create table if not exists user_goals (
-    user_id uuid primary key references auth.users(id) on delete cascade,
-    calories double precision,
-    protein double precision,
-    carbs double precision,
-    fat double precision,
-    fiber double precision,
-    updated_at timestamptz default now()
+    user_id    uuid primary key references profiles(user_id) on delete cascade,
+    calories   double precision,
+    protein    double precision,
+    carbs      double precision,
+    fat        double precision,
+    fiber      double precision,
+    updated_at timestamptz not null default now()
 );
+
+alter table user_goals enable row level security;
+drop policy if exists "user_goals: own row" on user_goals;
+create policy "user_goals: own row" on user_goals
+  for all using (auth.uid() = user_id);
 
 create table if not exists user_recipes (
     recipe_id bigserial primary key,
@@ -51,38 +96,80 @@ create table if not exists user_recipes (
     updated_at timestamptz default now()
 );
 
+-- user_favorites stores a snapshot of the food name so favorites are
+-- displayable even when the dining item is not in the DB or cache.
+-- There is intentionally NO foreign key to (foods.source, foods.food_id)
+-- because UCI dining items are served from the in-memory cache, not stored
+-- in the foods table, so an FK would prevent users from favoriting them.
 create table if not exists user_favorites (
-    user_id uuid not null references auth.users(id) on delete cascade,
-    source text not null,
-    food_id bigint not null,
-    added_at timestamptz default now(),
-    expires_at timestamptz,
-    primary key (user_id, source, food_id),
-    foreign key (source, food_id)
-        references foods (source, food_id)
-        on delete cascade
+    user_id   uuid        not null references profiles(user_id) on delete cascade,
+    source    text        not null,
+    food_id   bigint      not null,
+    food_name text        not null default '',
+    added_at  timestamptz not null default now(),
+    primary key (user_id, source, food_id)
 );
 
+alter table user_favorites enable row level security;
+drop policy if exists "user_favorites: own rows" on user_favorites;
+create policy "user_favorites: own rows" on user_favorites
+  for all using (auth.uid() = user_id);
+
+-- meal_type added to track which meal period the food was consumed in.
+-- food_name snapshot stored so the log remains readable even after food is purged.
+-- No FK to foods table (same reason as user_favorites).
 create table if not exists user_consumption_log (
-    log_id bigserial primary key,
-    user_id uuid not null references auth.users(id) on delete cascade,
-    source text not null,
-    food_id bigint not null,
-    consumed_at timestamptz default now(),
-    serving_size_g double precision default 100,
-    calories double precision,
-    protein double precision,
-    carbs double precision,
-    fat double precision,
-    fiber double precision,
-    foreign key (source, food_id)
-        references foods (source, food_id)
-        on delete cascade
+    log_id         uuid        primary key default gen_random_uuid(),
+    user_id        uuid        not null references profiles(user_id) on delete cascade,
+    source         text        not null,
+    food_id        bigint      not null,
+    food_name      text        not null default '',
+    serving_size_g double precision not null default 100,
+    calories       double precision,
+    protein        double precision,
+    carbs          double precision,
+    fat            double precision,
+    fiber          double precision,
+    meal_type      text,
+    consumed_at    timestamptz not null default now()
 );
+
+alter table user_consumption_log enable row level security;
+drop policy if exists "consumption_log: own rows" on user_consumption_log;
+create policy "consumption_log: own rows" on user_consumption_log
+  for all using (auth.uid() = user_id);
 
 create index if not exists idx_foods_name on foods (name);
 create index if not exists idx_foods_brand on foods (brand);
+create index if not exists idx_foods_updated_at on foods (updated_at);
 create index if not exists idx_food_tags_tag on food_tags (tag);
 create index if not exists idx_user_favorites_user on user_favorites (user_id);
-create index if not exists idx_user_favorites_exp on user_favorites (expires_at);
 create index if not exists idx_consumption_user_time on user_consumption_log (user_id, consumed_at desc);
+
+-- ---------------------------------------------------------------------------
+-- USDA food TTL: delete non-dining foods not refreshed in 30+ days.
+-- Called at API startup (api/main.py lifespan) and nightly via pg_cron.
+-- ---------------------------------------------------------------------------
+
+create or replace function delete_stale_usda_foods(days_old int default 30)
+returns int language plpgsql as $$
+declare
+  deleted_count int;
+begin
+  delete from foods
+  where source not like 'uci_dining_%'
+    and updated_at < now() - (days_old || ' days')::interval;
+  get diagnostics deleted_count = row_count;
+  return deleted_count;
+end;
+$$;
+
+-- pg_cron: runs nightly at 03:00 UTC. Safe to re-run (unschedules first if exists).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-stale-foods') THEN
+    PERFORM cron.unschedule('purge-stale-foods');
+  END IF;
+  PERFORM cron.schedule('purge-stale-foods', '0 3 * * *', 'select delete_stale_usda_foods(30)');
+END;
+$$;
