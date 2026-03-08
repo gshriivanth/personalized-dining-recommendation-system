@@ -42,6 +42,11 @@ class FoodIndexManager:
         print(f"Indexed {len(self.keyword_index.index)} unique terms")
         print(f"Indexed {len(self.nutrient_index.foods)} foods")
 
+    def add_food(self, food: Food) -> None:
+        """Add a single food to both indexes (used for on-demand ingestion)."""
+        self.keyword_index.add_food(food)
+        self.nutrient_index.add_food(food)
+
     def search(
         self,
         query: Optional[str] = None,
