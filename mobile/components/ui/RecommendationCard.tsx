@@ -25,38 +25,44 @@ export function RecommendationCard({ item, variant = "explore", onPress }: Props
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       onPress={onPress}
     >
-      {/* Header row */}
-      <View style={styles.header}>
-        <View style={styles.labelPill}>
-          <View style={[styles.labelDot, { backgroundColor: accentColor }]} />
-          <Text style={[styles.labelText, { color: accentColor }]}>{labelText}</Text>
+      {/* Left accent stripe */}
+      <View style={[styles.accentStripe, { backgroundColor: accentColor }]} />
+
+      {/* Card content inset from stripe */}
+      <View style={styles.content}>
+        {/* Header row */}
+        <View style={styles.header}>
+          <View style={styles.labelPill}>
+            <View style={[styles.labelDot, { backgroundColor: accentColor }]} />
+            <Text style={[styles.labelText, { color: accentColor }]}>{labelText}</Text>
+          </View>
+          {isDining && food.station && (
+            <Text style={styles.station}>{food.station}</Text>
+          )}
         </View>
-        {isDining && food.station && (
-          <Text style={styles.station}>{food.station}</Text>
+
+        {/* Food name */}
+        <Text style={styles.name} numberOfLines={2}>
+          {food.name}
+        </Text>
+        {food.brand ? (
+          <Text style={styles.brand}>{food.brand}</Text>
+        ) : null}
+
+        {/* Nutrient badges row */}
+        {nutrient_highlights.length > 0 && (
+          <View style={styles.badgesRow}>
+            {nutrient_highlights.slice(0, 4).map((nh) => (
+              <MacroBadge key={nh.nutrient} highlight={nh} />
+            ))}
+          </View>
         )}
+
+        {/* Explanation */}
+        <Text style={styles.explanation} numberOfLines={2}>
+          {explanation}
+        </Text>
       </View>
-
-      {/* Food name */}
-      <Text style={styles.name} numberOfLines={2}>
-        {food.name}
-      </Text>
-      {food.brand ? (
-        <Text style={styles.brand}>{food.brand}</Text>
-      ) : null}
-
-      {/* Nutrient badges row */}
-      {nutrient_highlights.length > 0 && (
-        <View style={styles.badgesRow}>
-          {nutrient_highlights.slice(0, 4).map((nh) => (
-            <MacroBadge key={nh.nutrient} highlight={nh} />
-          ))}
-        </View>
-      )}
-
-      {/* Explanation */}
-      <Text style={styles.explanation} numberOfLines={2}>
-        {explanation}
-      </Text>
     </Pressable>
   );
 }
@@ -65,15 +71,24 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.card,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    borderWidth: 1.5,
-    borderColor: "rgba(2, 62, 138, 0.35)",
+    marginBottom: Spacing.md,
+    borderWidth: 5,
+    borderColor: "#023E8A",
+    overflow: "hidden",
+    flexDirection: "row",
     ...Shadow.card,
   },
   pressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
+  },
+  accentStripe: {
+    width: 4,
+    alignSelf: "stretch",
+  },
+  content: {
+    flex: 1,
+    padding: Spacing.md,
   },
   header: {
     flexDirection: "row",

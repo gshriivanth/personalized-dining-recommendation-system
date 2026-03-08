@@ -1,53 +1,188 @@
 # src/ingest/dininghall_sources.py
 """
-UCI Dining Hall Web Scraper
+UCI Dining Hall Scraper
 
-Scrapes menu data from UCI's dining halls (Brandywine and Anteatery)
-from https://uci.mydininghub.com/en
+Fetches menu data from UCI's dining halls (Brandywine and Anteatery) via
+the Elevate DXP GraphQL API used by uci.mydininghub.com.
 
-Since there's no public API, we use web scraping with BeautifulSoup.
+The API requires a GET request (not POST) with query and variables as URL
+parameters, plus specific Magento store headers.  The response encodes all
+nutrition data inside a flat ``attributes`` list of ``{name, value}`` pairs.
+
+Two-step fetch:
+  1. ``getLocation`` — fetches station IDs/names and allergen/preference code
+     mappings.  Cached per session so we only call it once per hall.
+  2. ``getLocationRecipes`` (DAILY) — fetches the menu for a given date and
+     meal period, then joins items via stationSkuMap → SKU → product.
+
+No Playwright fallback is needed once the correct headers/method are used.
 """
 from __future__ import annotations
 
-from typing import List, Dict, Any, Optional, cast
-from dataclasses import dataclass, field
-import requests
-from bs4 import BeautifulSoup, Tag
+import json
+import logging
 import time
-import re
+from dataclasses import dataclass, field
+from datetime import date as date_type
+from typing import Any, Dict, List, Optional, Set
+
+import requests
 
 from src.logical_view import Food
 
+logger = logging.getLogger(__name__)
 
-# UCI Dining Hall URLs
-UCI_DINING_BASE_URL = "https://uci.mydininghub.com/en"
-DINING_HALLS = {
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ELEVATE_GRAPHQL_URL = (
+    "https://api.elevate-dxp.com/api/mesh/"
+    "c087f756-cc72-4649-a36f-3a41b700c519/graphql"
+)
+
+# Display name → API locationUrlKey
+DINING_HALLS: Dict[str, str] = {
     "brandywine": "Brandywine",
-    "anteatery": "Anteatery"
+    "anteatery": "Anteatery",
+}
+
+# hall_key → Elevate DXP locationUrlKey
+_LOCATION_URL_KEYS: Dict[str, str] = {
+    "brandywine": "brandywine",
+    "anteatery": "the-anteatery",
+}
+
+# Elevate DXP integer IDs for each named meal period
+MEAL_PERIOD_IDS: Dict[str, int] = {
+    "breakfast": 10,
+    "brunch": 13,
+    "lunch": 25,
+    "afternoon_snack": 25,
+    "dinner": 16,
+    "evening_snack": 16,
+}
+
+# ---------------------------------------------------------------------------
+# GraphQL queries
+# ---------------------------------------------------------------------------
+
+_GET_LOCATION_QUERY = """
+query getLocation(
+  $locationUrlKey: String!
+  $sortOrder: Commerce_SortOrderEnum
+) {
+  getLocation(campusUrlKey: "campus", locationUrlKey: $locationUrlKey) {
+    commerceAttributes {
+      maxMenusDate
+      children {
+        id
+        uid
+        name
+        position
+      }
+    }
+  }
+  Commerce_mealPeriods(sort_order: $sortOrder) {
+    name
+    id
+    position
+  }
+  Commerce_attributesList(entityType: CATALOG_PRODUCT) {
+    items {
+      code
+      options {
+        value
+        label
+      }
+    }
+  }
+}
+"""
+
+_GET_LOCATION_RECIPES_QUERY = """
+query getLocationRecipes(
+  $locationUrlKey: String!
+  $date: String!
+  $mealPeriod: Int
+  $viewType: Commerce_MenuViewType!
+) {
+  getLocationRecipes(
+    campusUrlKey: "campus"
+    locationUrlKey: $locationUrlKey
+    date: $date
+    mealPeriod: $mealPeriod
+    viewType: $viewType
+  ) {
+    locationRecipesMap {
+      stationSkuMap {
+        id
+        skus
+      }
+    }
+    products {
+      items {
+        sku
+        name
+        images {
+          url
+        }
+        attributes {
+          name
+          value
+        }
+      }
+    }
+  }
+}
+"""
+
+_GRAPHQL_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:141.0) "
+        "Gecko/20100101 Firefox/141.0"
+    ),
+    "Referer": "https://uci.mydininghub.com/",
+    "content-type": "application/json",
+    "store": "ch_uci_en",
+    "magento-store-code": "ch_uci",
+    "magento-website-code": "ch_uci",
+    "magento-store-view-code": "ch_uci_en",
+    "x-api-key": "ElevateAPIProd",
+    "Origin": "https://uci.mydininghub.com",
+}
+
+# Attribute name → nutrition field
+_NUTRITION_ATTR_MAP: Dict[str, str] = {
+    "calories": "calories",
+    "protein": "protein",
+    "total_carbohydrates": "carbs",
+    "total_fat": "fat",
+    "dietary_fiber": "fiber",
 }
 
 
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
 @dataclass
 class DiningMenuItem:
-    """
-    Represents a single menu item from UCI dining halls.
-    """
+    """A single menu item from a UCI dining hall."""
+
     name: str
     hall: str
-    meal_period: str  # breakfast, lunch, dinner
-    station: str  # serving station/category
-    # Nutritional info (may be incomplete from web scraping)
+    meal_period: str
+    station: str
     calories: Optional[float] = None
     protein: Optional[float] = None
     carbs: Optional[float] = None
     fat: Optional[float] = None
     fiber: Optional[float] = None
-    # Additional metadata
     allergens: List[str] = field(default_factory=list)
-    dietary_flags: List[str] = field(default_factory=list)  # vegetarian, vegan, etc.
+    dietary_flags: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
         return {
             "name": self.name,
             "hall": self.hall,
@@ -63,305 +198,375 @@ class DiningMenuItem:
         }
 
 
+# ---------------------------------------------------------------------------
+# Scraper
+# ---------------------------------------------------------------------------
+
 class UCIDiningScraper:
     """
-    Web scraper for UCI dining hall menus.
+    Fetches UCI dining hall menus via Elevate DXP GraphQL (GET requests).
+
+    Usage::
+
+        scraper = UCIDiningScraper()
+        items = scraper.scrape_dining_hall("brandywine")   # today
+        foods = scraper.convert_to_foods(items)
     """
 
     def __init__(self, timeout_s: int = 30):
-        """
-        Initialize scraper.
-
-        Args:
-            timeout_s: Request timeout in seconds
-        """
         self.timeout_s = timeout_s
+        # Per-session cache: hall_key → {station_id: station_name}
+        self._station_cache: Dict[str, Dict[int, str]] = {}
+        # Per-session cache: {allergen_code: allergen_name}
+        self._allergen_codes: Dict[int, str] = {}
+        # Per-session cache: {preference_code: preference_name}
+        self._preference_codes: Dict[int, str] = {}
 
-        # We utilize a Session object because we make multiple requests to the uci dining webpage
-        # and we want the state (including the following header and any cookies set on the first request)
-        # to persist throughout the entire scraping process 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
-        self.session = requests.Session()
-        # Set user agent to avoid being blocked
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-        })
-
-    def fetch_page(self, url: str) -> str:
+    def scrape_dining_hall(
+        self, hall: str, date: Optional[str] = None
+    ) -> List[DiningMenuItem]:
         """
-        Fetch HTML content from URL.
+        Scrape the current meal period for *hall*.
 
         Args:
-            url: URL to fetch
+            hall: ``"brandywine"`` or ``"anteatery"``
+            date: ISO date string (YYYY-MM-DD); defaults to today.
 
         Returns:
-            HTML content as string
-
-        Raises:
-            requests.RequestException: If request fails
+            List of ``DiningMenuItem`` objects (may be empty on failure).
         """
-        response = self.session.get(url, timeout=self.timeout_s)
-        response.raise_for_status()
-        return response.text
-
-    def parse_menu_page(self, html: str, hall: str) -> List[DiningMenuItem]:
-        """
-        Parse dining hall menu page HTML.
-
-        Args:
-            html: HTML content
-            hall: Dining hall name (Brandywine or Anteatery)
-
-        Returns:
-            List of DiningMenuItem objects
-        """
-        # Soup will be a searchable tree representing the entire web page we are currenlty scrapping
-        soup = BeautifulSoup(html, 'html.parser')
-        menu_items = []
-
-        # Find all menu items
-        meal_sections = soup.find_all(['div', 'section'],
-                                     class_=lambda x: 'menu' in x.lower() if x else False)
-
-        for section in meal_sections:
-            # Cast to Tag for proper typing
-            section_tag = cast(Tag, section)
-            meal_period = self._extract_meal_period(section_tag) # Determines meal of the day
-
-            # Find individual menu items
-            items = section_tag.find_all(['div', 'li', 'article'],
-                                    class_=lambda x: ('item' in str(x).lower() or
-                                                     'dish' in str(x).lower()) if x else False)
-
-            for item in items:
-                try:
-                    menu_item = self._parse_menu_item(cast(Tag, item), hall, meal_period)
-                    if menu_item:
-                        menu_items.append(menu_item)
-                except Exception as e:
-                    continue
-
-        return menu_items
-
-    def _extract_meal_period(self, section: Tag) -> str:
-        """Extract meal period from section element."""
-        text = section.get_text().lower()
-
-        if 'breakfast' in text:
-            return 'breakfast'
-        elif 'lunch' in text:
-            return 'lunch'
-        elif 'dinner' in text:
-            return 'dinner'
-        else:
-            return 'unknown'
-
-    def _parse_menu_item(self, item_element: Tag, hall: str, meal_period: str) -> Optional[DiningMenuItem]:
-        """Parse individual menu item element."""
-        # Extract item name
-        name_elem = item_element.find(['h3', 'h4', 'span', 'div'],
-                                      class_=lambda x: 'name' in str(x).lower() if x else False)
-        if not name_elem:
-            name = item_element.get_text(strip=True)
-        else:
-            name = name_elem.get_text(strip=True)
-
-        if not name:
-            return None
-
-        # Extract station/category
-        station_elem = item_element.find(['span', 'div'],
-                                        class_=lambda x: ('station' in str(x).lower() or
-                                                         'category' in str(x).lower()) if x else False)
-        station = station_elem.get_text(strip=True) if station_elem else "General"
-
-        # Extract nutritional info
-        nutrition = self._extract_nutrition_info(item_element)
-
-        # Extract dietary flags and allergens
-        dietary_flags = self._extract_dietary_flags(item_element)
-        allergens = self._extract_allergens(item_element)
-
-        return DiningMenuItem(
-            name=name,
-            hall=hall,
-            meal_period=meal_period,
-            station=station,
-            calories=nutrition.get('calories'),
-            protein=nutrition.get('protein'),
-            carbs=nutrition.get('carbs'),
-            fat=nutrition.get('fat'),
-            fiber=nutrition.get('fiber'),
-            allergens=allergens,
-            dietary_flags=dietary_flags,
-        )
-
-    def _extract_nutrition_info(self, element: Tag) -> Dict[str, Optional[float]]:
-        """Extract nutritional information from element."""
-        nutrition: Dict[str, Optional[float]] = {
-            'calories': None,
-            'protein': None,
-            'carbs': None,
-            'fat': None,
-            'fiber': None,
-        }
-
-        nutrition_elem = element.find(['div', 'section'],
-                                     class_=lambda x: bool(x and 'nutrition' in str(x).lower()))
-        if not nutrition_elem:
-            return nutrition
-
-        text = nutrition_elem.get_text()
-
-        # Extract nutrition values
-        # First arg in all search function calls describes the text pattern we are search for
-        cal_match = re.search(r'(\d+)\s*cal', text, re.IGNORECASE) 
-        if cal_match:
-            nutrition['calories'] = float(cal_match.group(1))
-
-        pro_match = re.search(r'protein[:\s]*(\d+\.?\d*)\s*g', text, re.IGNORECASE)
-        if pro_match:
-            nutrition['protein'] = float(pro_match.group(1))
-
-        carb_match = re.search(r'carb(?:ohydrate)?[:\s]*(\d+\.?\d*)\s*g', text, re.IGNORECASE)
-        if carb_match:
-            nutrition['carbs'] = float(carb_match.group(1))
-
-        fat_match = re.search(r'fat[:\s]*(\d+\.?\d*)\s*g', text, re.IGNORECASE)
-        if fat_match:
-            nutrition['fat'] = float(fat_match.group(1))
-
-        fiber_match = re.search(r'fiber[:\s]*(\d+\.?\d*)\s*g', text, re.IGNORECASE)
-        if fiber_match:
-            nutrition['fiber'] = float(fiber_match.group(1))
-
-        return nutrition
-
-    def _extract_dietary_flags(self, element: Tag) -> List[str]:
-        """Extract dietary flags (vegetarian, vegan, etc.)."""
-        flags = []
-        text = element.get_text().lower()
-
-        # Look for dietary indicators
-        if 'vegan' in text:
-            flags.append('vegan')
-        if 'vegetarian' in text:
-            flags.append('vegetarian')
-        if 'gluten free' in text or 'gluten-free' in text:
-            flags.append('gluten-free')
-        if 'dairy free' in text or 'dairy-free' in text:
-            flags.append('dairy-free')
-
-        return flags
-
-    def _extract_allergens(self, element: Tag) -> List[str]:
-        """Extract allergen information."""
-        allergens = []
-        text = element.get_text().lower()
-
-        common_allergens = [
-            'milk', 'eggs', 'fish', 'shellfish', 'tree nuts',
-            'peanuts', 'wheat', 'soybeans', 'soy'
-        ]
-
-        for allergen in common_allergens:
-            if allergen in text:
-                allergens.append(allergen)
-
-        return allergens
-
-    def scrape_dining_hall(self, hall: str, date: Optional[str] = None) -> List[DiningMenuItem]:
-        """
-        Scrape menu for a specific dining hall.
-
-        Args:
-            hall: Dining hall name ('brandywine' or 'anteatery')
-            date: Optional date string (YYYY-MM-DD), defaults to today
-
-        Returns:
-            List of DiningMenuItem objects
-        """
-        if hall.lower() not in DINING_HALLS:
-            raise ValueError(f"Invalid hall: {hall}. Must be one of {list(DINING_HALLS.keys())}")
-
-        # Construct URL
-        if date:
-            url = f"{UCI_DINING_BASE_URL}/{hall.lower()}?date={date}"
-        else:
-            url = f"{UCI_DINING_BASE_URL}/{hall.lower()}"
-
-        print(f"Scraping {DINING_HALLS[hall.lower()]} menu from {url}...")
-
-        try:
-            html = self.fetch_page(url)
-            menu_items = self.parse_menu_page(html, DINING_HALLS[hall.lower()])
-            print(f"  Found {len(menu_items)} menu items")
-            return menu_items
-        except Exception as e:
-            print(f"  Error scraping {hall}: {e}")
-            return []
-
-    def scrape_all_halls(self, date: Optional[str] = None, delay_seconds: float = 1.0) -> Dict[str, List[DiningMenuItem]]:
-        """
-        Scrape menus from all dining halls.
-
-        Args:
-            date: Optional date string (YYYY-MM-DD)
-            delay_seconds: Delay between requests
-
-        Returns:
-            Dictionary mapping hall names to lists of menu items
-        """
-        results = {}
-
-        for hall_key in DINING_HALLS.keys():
-            menu_items = self.scrape_dining_hall(hall_key, date)
-            results[DINING_HALLS[hall_key]] = menu_items
-            time.sleep(delay_seconds)
-
-        return results
-
-    def convert_to_foods(self, menu_items: List[DiningMenuItem], default_calories: float = 200.0) -> List[Food]:
-        """
-        Convert DiningMenuItem objects to Food objects.
-
-        Args:
-            menu_items: List of DiningMenuItem objects
-            default_calories: Default calorie value if not available
-
-        Returns:
-            List of Food objects
-        """
-        foods = []
-
-        for idx, item in enumerate(menu_items):
-            # Generate unique food_id for UCI dining items (use negative IDs)
-            food_id = -(idx + 1)
-
-            # Use available nutrition data or defaults
-            calories = item.calories if item.calories is not None else default_calories
-            protein = item.protein if item.protein is not None else 0.0
-            carbs = item.carbs if item.carbs is not None else 0.0
-            fat = item.fat if item.fat is not None else 0.0
-            fiber = item.fiber if item.fiber is not None else 0.0
-
-            # Map meal period to meal category
-            meal_category = item.meal_period if item.meal_period != 'unknown' else 'any'
-
-            food = Food(
-                food_id=food_id,
-                name=item.name,
-                calories=calories,
-                protein=protein,
-                carbs=carbs,
-                fat=fat,
-                fiber=fiber,
-                meal_category=meal_category,
-                tags=item.dietary_flags.copy(),
-                brand=item.hall,
-                source=f"uci_dining_{item.hall.lower()}",
+        hall = hall.lower()
+        if hall not in DINING_HALLS:
+            raise ValueError(
+                f"Invalid hall: {hall!r}. Must be one of {list(DINING_HALLS)}"
             )
 
-            foods.append(food)
+        date_str = date or date_type.today().isoformat()
+        hall_display = DINING_HALLS[hall]
+        meal_period_name = self._current_meal_period_name()
+        meal_period_id = MEAL_PERIOD_IDS.get(meal_period_name, 25)
 
+        logger.info(
+            "Scraping %s — period=%s (id=%d) date=%s",
+            hall_display, meal_period_name, meal_period_id, date_str,
+        )
+
+        # Ensure station/allergen metadata is loaded
+        self._ensure_location_info(hall)
+
+        items = self._fetch_menu(
+            hall, hall_display, meal_period_name, meal_period_id, date_str
+        )
+        logger.info("Fetched %d items for %s", len(items), hall_display)
+        return items
+
+    def scrape_all_halls(
+        self,
+        date: Optional[str] = None,
+        delay_seconds: float = 1.0,
+    ) -> Dict[str, List[DiningMenuItem]]:
+        """Scrape all halls; returns ``{display_name: [items]}``."""
+        results: Dict[str, List[DiningMenuItem]] = {}
+        for hall_key, hall_display in DINING_HALLS.items():
+            results[hall_display] = self.scrape_dining_hall(hall_key, date)
+            time.sleep(delay_seconds)
+        return results
+
+    def scrape_all(self, date: Optional[str] = None) -> List[Food]:
+        """
+        Scrape all halls and return a flat list of ``Food`` objects.
+        Used by ``dining_service.py`` to populate the in-memory cache.
+        """
+        all_items: List[DiningMenuItem] = []
+        for hall_key in DINING_HALLS:
+            all_items.extend(self.scrape_dining_hall(hall_key, date))
+        return self.convert_to_foods(all_items)
+
+    def convert_to_foods(
+        self,
+        menu_items: List[DiningMenuItem],
+        default_calories: float = 200.0,
+    ) -> List[Food]:
+        """Convert ``DiningMenuItem`` list → ``Food`` list."""
+        foods: List[Food] = []
+        for idx, item in enumerate(menu_items):
+            food_id = -(idx + 1)
+            calories = item.calories if item.calories is not None else default_calories
+            meal_category = (
+                item.meal_period if item.meal_period != "unknown" else "any"
+            )
+            foods.append(
+                Food(
+                    food_id=food_id,
+                    name=item.name,
+                    calories=calories,
+                    protein=item.protein or 0.0,
+                    carbs=item.carbs or 0.0,
+                    fat=item.fat or 0.0,
+                    fiber=item.fiber or 0.0,
+                    meal_category=meal_category,
+                    tags=list(item.dietary_flags),
+                    brand=item.hall,
+                    source=f"uci_dining_{item.hall.lower()}",
+                )
+            )
         return foods
+
+    # ------------------------------------------------------------------
+    # Internal — location metadata
+    # ------------------------------------------------------------------
+
+    def _ensure_location_info(self, hall_key: str) -> None:
+        """Populate station/allergen/preference caches for *hall_key* if needed."""
+        if hall_key in self._station_cache:
+            return
+
+        location_url_key = _LOCATION_URL_KEYS[hall_key]
+        variables = {"locationUrlKey": location_url_key, "sortOrder": "ASC"}
+
+        try:
+            data = self._graphql_get(_GET_LOCATION_QUERY, variables)
+        except Exception as exc:
+            logger.warning("getLocation failed for %s: %s", hall_key, exc)
+            self._station_cache[hall_key] = {}
+            return
+
+        # Station id → name
+        stations: Dict[int, str] = {}
+        children = (
+            data.get("data", {})
+                .get("getLocation", {})
+                .get("commerceAttributes", {})
+                .get("children", [])
+        )
+        for child in children:
+            sid = child.get("id")
+            sname = child.get("name", "")
+            if sid is not None:
+                stations[int(sid)] = sname
+        self._station_cache[hall_key] = stations
+
+        # Allergen and preference code tables (same for all halls)
+        if not self._allergen_codes:
+            attr_items = (
+                data.get("data", {})
+                    .get("Commerce_attributesList", {})
+                    .get("items", [])
+            )
+            for attr in attr_items:
+                code = attr.get("code", "")
+                if code == "allergens_intolerances":
+                    for opt in attr.get("options", []):
+                        try:
+                            self._allergen_codes[int(opt["value"])] = opt["label"]
+                        except (KeyError, ValueError):
+                            pass
+                elif code == "menu_preferences":
+                    for opt in attr.get("options", []):
+                        try:
+                            self._preference_codes[int(opt["value"])] = opt["label"]
+                        except (KeyError, ValueError):
+                            pass
+
+    # ------------------------------------------------------------------
+    # Internal — menu fetch
+    # ------------------------------------------------------------------
+
+    def _fetch_menu(
+        self,
+        hall_key: str,
+        hall_display: str,
+        meal_period_name: str,
+        meal_period_id: int,
+        date_str: str,
+    ) -> List[DiningMenuItem]:
+        """Fetch and parse today's menu via getLocationRecipes."""
+        location_url_key = _LOCATION_URL_KEYS[hall_key]
+        variables: Dict[str, Any] = {
+            "locationUrlKey": location_url_key,
+            "date": date_str,
+            "mealPeriod": meal_period_id,
+            "viewType": "DAILY",
+        }
+
+        try:
+            data = self._graphql_get(_GET_LOCATION_RECIPES_QUERY, variables)
+        except Exception as exc:
+            logger.warning("getLocationRecipes failed for %s: %s", hall_display, exc)
+            return []
+
+        recipes = data.get("data", {}).get("getLocationRecipes") or {}
+        products_wrapper = recipes.get("products")
+        location_map = recipes.get("locationRecipesMap")
+
+        if not products_wrapper or not location_map:
+            logger.debug(
+                "getLocationRecipes returned null products/map for %s", hall_display
+            )
+            return []
+
+        # Build SKU → parsed product dict
+        sku_map = self._parse_products(products_wrapper.get("items", []))
+
+        # Station id → name lookup for this hall
+        station_names = self._station_cache.get(hall_key, {})
+
+        items: List[DiningMenuItem] = []
+        seen: Set[str] = set()
+
+        for station_entry in location_map.get("stationSkuMap", []):
+            station_id = station_entry.get("id")
+            station_name = station_names.get(station_id, f"Station {station_id}")
+
+            for sku in station_entry.get("skus", []):
+                product = sku_map.get(sku)
+                if product is None:
+                    continue
+                name = product["name"].strip()
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+
+                items.append(
+                    DiningMenuItem(
+                        name=name,
+                        hall=hall_display,
+                        meal_period=meal_period_name,
+                        station=station_name,
+                        calories=product.get("calories"),
+                        protein=product.get("protein"),
+                        carbs=product.get("carbs"),
+                        fat=product.get("fat"),
+                        fiber=product.get("fiber"),
+                        allergens=product.get("allergens", []),
+                        dietary_flags=product.get("dietary_flags", []),
+                    )
+                )
+
+        return items
+
+    # ------------------------------------------------------------------
+    # Internal — product attribute parsing
+    # ------------------------------------------------------------------
+
+    def _parse_products(
+        self, items: List[Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Convert a ``products.items`` list into a ``{sku: parsed_product}`` dict.
+
+        Nutrition values live in the ``attributes`` list as ``{name, value}``
+        pairs; e.g. ``{"name": "calories", "value": "320"}``.
+        """
+        result: Dict[str, Dict[str, Any]] = {}
+
+        for product in items:
+            sku = product.get("sku", "")
+            name = product.get("name", "")
+
+            # Build attribute lookup
+            attr_map: Dict[str, Any] = {}
+            for attr in product.get("attributes", []):
+                attr_map[attr.get("name", "")] = attr.get("value")
+
+            # Nutrition
+            parsed: Dict[str, Any] = {"name": name}
+            for attr_name, field_name in _NUTRITION_ATTR_MAP.items():
+                parsed[field_name] = _to_float(attr_map.get(attr_name))
+
+            # Allergens
+            allergen_raw = attr_map.get("allergens_intolerances")
+            allergen_codes: List[int] = []
+            if isinstance(allergen_raw, list):
+                allergen_codes = [int(c) for c in allergen_raw if _is_int(c)]
+            elif allergen_raw is not None:
+                if _is_int(allergen_raw):
+                    allergen_codes = [int(allergen_raw)]
+            parsed["allergens"] = [
+                self._allergen_codes.get(c, str(c)) for c in allergen_codes
+            ]
+
+            # Dietary preferences
+            pref_raw = attr_map.get("recipe_attributes")
+            pref_codes: List[int] = []
+            if isinstance(pref_raw, list):
+                pref_codes = [int(c) for c in pref_raw if _is_int(c)]
+            elif pref_raw is not None:
+                if _is_int(pref_raw):
+                    pref_codes = [int(pref_raw)]
+            parsed["dietary_flags"] = [
+                self._preference_codes.get(c, str(c)) for c in pref_codes
+            ]
+
+            result[sku] = parsed
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Internal — HTTP
+    # ------------------------------------------------------------------
+
+    def _graphql_get(
+        self, query: str, variables: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Send a GET request to the Elevate DXP GraphQL endpoint with
+        ``query`` and ``variables`` as URL parameters (not a POST body).
+        Raises on non-2xx or JSON parse failure.
+        """
+        resp = requests.get(
+            ELEVATE_GRAPHQL_URL,
+            headers=_GRAPHQL_HEADERS,
+            params={
+                "query": query,
+                "variables": json.dumps(variables),
+            },
+            timeout=self.timeout_s,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _current_meal_period_name() -> str:
+        """Return the name of the currently active UCI meal period."""
+        try:
+            from src.cache.meal_periods import get_current_period
+            period = get_current_period()
+            return period.name if period else "lunch"
+        except Exception:
+            return "lunch"
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+def _to_float(value: Any) -> Optional[float]:
+    """Safely convert *value* to float; return None on failure."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        import re
+        m = re.search(r"-?\d+(\.\d+)?", value)
+        if m:
+            return float(m.group(0))
+    return None
+
+
+def _is_int(value: Any) -> bool:
+    """Return True if *value* can be safely converted to int."""
+    try:
+        int(value)
+        return True
+    except (TypeError, ValueError):
+        return False
