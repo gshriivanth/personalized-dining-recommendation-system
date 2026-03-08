@@ -11,10 +11,10 @@ export const Colors = {
   textInverted: "#FFFFFF",
 
   dining: {
-    primary: "#1B4332",
-    accent: "#E9C46A",
-    light: "#D8F3DC",
-    surface: "#2D6A4F",
+    primary: "#023E8A",
+    accent: "#74C69D",
+    light: "#E0F0FF",
+    surface: "#0353A4",
   },
 
   explore: {
