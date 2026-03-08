@@ -10,4 +10,5 @@ uvicorn[standard]==0.32.1
 pydantic==2.10.3
 
 # JWT auth (Supabase token validation)
-PyJWT==2.10.1
+PyJWT[crypto]==2.10.1
+cryptography>=42.0.0

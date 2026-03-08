@@ -5,51 +5,56 @@ Supabase JWT authentication for FastAPI.
 How it works
 ------------
 1. The mobile app calls Supabase Auth directly (sign-up / sign-in).
-2. Supabase returns a signed JWT access token.
+2. Supabase returns a signed JWT access token (algorithm: ES256).
 3. The mobile app sends the token as:
        Authorization: Bearer <token>
-4. This module validates the token using your SUPABASE_JWT_SECRET
-   (found in: Supabase Dashboard → Settings → API → JWT Secret).
+4. This module validates the token using Supabase's public JWKS endpoint
+   (SUPABASE_URL/auth/v1/.well-known/jwks.json). Keys are cached in-process.
 5. The validated user_id (UUID string) is stored on request.state so
    routers can access it via the `require_auth` dependency.
 
 Environment variable required in backend/.env:
-    SUPABASE_JWT_SECRET=<your_jwt_secret>
+    SUPABASE_URL=https://<your-project-ref>.supabase.co
 """
 from __future__ import annotations
 
 import os
 from typing import Optional
 
-import jwt  # PyJWT
+import jwt
+from jwt import PyJWKClient
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
 
-JWT_SECRET_ENV = "SUPABASE_JWT_SECRET"
-JWT_ALGORITHM = "HS256"
+_jwks_client: Optional[PyJWKClient] = None
 
 
-def _get_jwt_secret() -> str:
-    secret = os.getenv(JWT_SECRET_ENV)
-    if not secret:
-        raise RuntimeError(
-            f"Missing {JWT_SECRET_ENV} env var. "
-            "Add it to backend/.env (Supabase Dashboard → Settings → API → JWT Secret)."
-        )
-    return secret
+def _get_jwks_client() -> PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None:
+        supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        if not supabase_url:
+            raise RuntimeError(
+                "Missing SUPABASE_URL env var. "
+                "Add it to backend/.env (e.g. https://<ref>.supabase.co)."
+            )
+        _jwks_client = PyJWKClient(f"{supabase_url}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
 
 
 def decode_supabase_token(token: str) -> dict:
     """
-    Decode and verify a Supabase JWT.  Raises HTTPException on failure.
+    Decode and verify a Supabase JWT (ES256).  Raises HTTPException on failure.
     """
     try:
+        client = _get_jwks_client()
+        signing_key = client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            _get_jwt_secret(),
-            algorithms=[JWT_ALGORITHM],
+            signing_key.key,
+            algorithms=["ES256"],
             options={"verify_aud": False},  # Supabase tokens use 'authenticated' audience
         )
         return payload
