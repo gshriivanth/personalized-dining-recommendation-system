@@ -8,6 +8,7 @@ Explore (non-dining hall) endpoints:
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -24,6 +25,7 @@ import src.db.user_db as user_db
 from src.index.build_index import FoodIndexManager
 from src.ingest.ingest_pipeline import parse_usda_food
 from src.ingest.usda_fdc_client import USDAFoodDataCentralClient
+from src.taxonomy.food_taxonomy import TAXONOMY_CATEGORIES, filter_foods_by_facets
 
 logger = logging.getLogger(__name__)
 
@@ -37,25 +39,41 @@ def _is_non_dining(food) -> bool:
 
 
 def _food_to_response(f) -> FoodResponse:
-    return FoodResponse(
-        food_id=f.food_id,
-        name=f.name,
-        source=f.source,
-        brand=f.brand,
-        meal_category=f.meal_category,
-        calories=f.calories,
-        protein=f.protein,
-        carbs=f.carbs,
-        fat=f.fat,
-        fiber=f.fiber,
-        tags=f.tags,
-    )
+    return FoodResponse.from_food(f)
+
+
+def _parse_tags_param(tags: Optional[str]) -> List[str]:
+    if not tags:
+        return []
+    return [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+
+@router.get("/facets")
+def get_explore_facets(
+    index: FoodIndexManager = Depends(index_manager_dep),
+) -> dict:
+    foods = [f for f in index.nutrient_index.foods.values() if _is_non_dining(f)]
+    category_counts = Counter(f.category for f in foods)
+    tag_counts = Counter(tag for food in foods for tag in food.tags)
+    return {
+        "categories": [
+            {"value": category, "count": category_counts.get(category, 0)}
+            for category in TAXONOMY_CATEGORIES
+            if category_counts.get(category, 0) > 0
+        ],
+        "tags": [
+            {"value": tag, "count": count}
+            for tag, count in sorted(tag_counts.items())
+        ],
+    }
 
 
 @router.get("/search", response_model=List[FoodResponse])
 def search_foods(
     q: str = Query(..., min_length=1, description="Search query"),
     meal_type: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    tags: Optional[str] = Query(None, description="Comma-separated required dietary tags"),
     max_calories: Optional[float] = Query(None, ge=0),
     top_k: int = Query(default=20, ge=1, le=100),
     index: FoodIndexManager = Depends(index_manager_dep),
@@ -65,8 +83,14 @@ def search_foods(
     If the in-memory index returns no results, falls back to the USDA FDC API,
     persists the new foods to the DB, and adds them to the live index.
     """
+    required_tags = _parse_tags_param(tags)
     results = index.search(query=q, meal_type=meal_type, max_calories=max_calories)
-    non_dining = [f for f in results if _is_non_dining(f)][:top_k]
+    non_dining = [f for f in results if _is_non_dining(f)]
+    non_dining = filter_foods_by_facets(
+        non_dining,
+        category=category,
+        required_tags=required_tags,
+    )[:top_k]
 
     if not non_dining:
         # Fallback: query USDA FDC API directly
@@ -75,6 +99,11 @@ def search_foods(
             raw = client.search_foods(q, page_size=min(top_k, 25))
             parsed = [parse_usda_food(item) for item in raw.get("foods", [])]
             new_foods = [f for f in parsed if f is not None and _is_non_dining(f)]
+            new_foods = filter_foods_by_facets(
+                new_foods,
+                category=category,
+                required_tags=required_tags,
+            )
 
             if new_foods:
                 non_dining = new_foods[:top_k]
@@ -100,12 +129,20 @@ def recommend_explore(
     Personalized ranked recommendations from non-dining foods.
 
     - With a query: rank foods matching the query.
-    - Without a query: rank only the user's non-dining favorites.
-      Returns an empty list if the user has no such favorites.
+    - Without a query:
+      - with active facets: browse and rank matching non-dining foods
+      - otherwise: rank only the user's non-dining favorites
     """
+    has_active_facets = bool(body.category or body.required_tags)
+
     if body.query:
         candidates = index.search(query=body.query, meal_type=body.meal_type)
         candidates = [f for f in candidates if _is_non_dining(f)]
+        candidates = filter_foods_by_facets(
+            candidates,
+            category=body.category,
+            required_tags=body.required_tags,
+        )
 
         if not candidates:
             # Fallback: query USDA FDC API directly
@@ -114,6 +151,11 @@ def recommend_explore(
                 raw = client.search_foods(body.query, page_size=min(body.top_k, 25))
                 parsed = [parse_usda_food(item) for item in raw.get("foods", [])]
                 new_foods = [f for f in parsed if f is not None and _is_non_dining(f)]
+                new_foods = filter_foods_by_facets(
+                    new_foods,
+                    category=body.category,
+                    required_tags=body.required_tags,
+                )
                 if new_foods:
                     candidates = new_foods
                     logger.info("USDA fallback in recommend: fetched %d foods for query %r", len(new_foods), body.query)
@@ -126,6 +168,18 @@ def recommend_explore(
             except Exception as exc:
                 logger.warning("USDA fallback failed in recommend for query %r: %s", body.query, exc)
 
+    elif has_active_facets:
+        candidates = [
+            f for f in index.nutrient_index.foods.values()
+            if _is_non_dining(f)
+        ]
+        candidates = filter_foods_by_facets(
+            candidates,
+            category=body.category,
+            required_tags=body.required_tags,
+        )
+        if not candidates:
+            return ExploreRecommendResponse(query=None, recommendations=[])
     elif body.user_id:
         # No query — only surface foods the user has explicitly favorited
         fav_rows = user_db.get_favorites(body.user_id)
@@ -138,6 +192,11 @@ def recommend_explore(
             f for f in index.nutrient_index.foods.values()
             if f.food_id in fav_ids and _is_non_dining(f)
         ]
+        candidates = filter_foods_by_facets(
+            candidates,
+            category=body.category,
+            required_tags=body.required_tags,
+        )
         if not candidates:
             return ExploreRecommendResponse(query=None, recommendations=[])
     else:

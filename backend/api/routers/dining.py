@@ -43,24 +43,7 @@ def get_menu(
         raise HTTPException(status_code=400, detail=f"Invalid meal_period. Use: {VALID_PERIODS}")
 
     foods = dining_service.fetch_dining_foods(hall, meal_period)
-    return [
-        FoodResponse(
-            food_id=f.food_id,
-            name=f.name,
-            source=f.source,
-            brand=f.brand,
-            meal_category=f.meal_category,
-            calories=f.calories,
-            protein=f.protein,
-            carbs=f.carbs,
-            fat=f.fat,
-            fiber=f.fiber,
-            tags=f.tags,
-            hall=dining_service.HALL_DISPLAY_NAMES.get(hall),
-            meal_period=meal_period,
-        )
-        for f in foods
-    ]
+    return [FoodResponse.from_food(f) for f in foods]
 
 
 @router.post("/recommend", response_model=DiningRecommendResponse)

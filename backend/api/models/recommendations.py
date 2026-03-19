@@ -53,6 +53,8 @@ class ExploreRecommendRequest(BaseModel):
     user_id: Optional[str] = None
     query: Optional[str] = None  # optional keyword filter
     meal_type: Optional[str] = None
+    category: Optional[str] = None
+    required_tags: List[str] = []
     goals: GoalsRequest
     consumed_today: ConsumedTodayInput = ConsumedTodayInput()
     favorites: List[int] = []

@@ -8,8 +8,7 @@ This service handles the conversion so neither layer needs to change.
 """
 from __future__ import annotations
 
-import math
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from src.implicit_ranking.food_ranking import FoodRanker, RankingContext
 from src.logical_view.food import Food
@@ -48,19 +47,40 @@ def _to_consumed_today(consumed: ConsumedTodayInput) -> ConsumedToday:
 
 
 def _food_to_response(food: Food) -> FoodResponse:
-    return FoodResponse(
-        food_id=food.food_id,
-        name=food.name,
-        source=food.source,
-        brand=food.brand,
-        meal_category=food.meal_category,
-        calories=food.calories,
-        protein=food.protein,
-        carbs=food.carbs,
-        fat=food.fat,
-        fiber=food.fiber,
-        tags=food.tags,
-    )
+    return FoodResponse.from_food(food)
+
+
+def _diversify_recommendations(raw_recs: List[dict], top_k: int) -> List[dict]:
+    """
+    Greedy diversification so top results are not dominated by one category/brand.
+    """
+    remaining = list(raw_recs)
+    selected: List[dict] = []
+    seen_categories: dict[str, int] = {}
+    seen_brands: dict[str, int] = {}
+
+    while remaining and len(selected) < top_k:
+        best_idx = 0
+        best_adjusted_score = float("-inf")
+
+        for idx, rec in enumerate(remaining):
+            food: Food = rec["food"]
+            category_penalty = 0.75 * seen_categories.get(food.category, 0)
+            brand_penalty = 0.35 * seen_brands.get(food.brand.lower(), 0) if food.brand else 0.0
+            adjusted_score = rec["score"] - category_penalty - brand_penalty
+            if adjusted_score > best_adjusted_score:
+                best_adjusted_score = adjusted_score
+                best_idx = idx
+
+        chosen = remaining.pop(best_idx)
+        selected.append(chosen)
+        chosen_food: Food = chosen["food"]
+        seen_categories[chosen_food.category] = seen_categories.get(chosen_food.category, 0) + 1
+        if chosen_food.brand:
+            brand_key = chosen_food.brand.lower()
+            seen_brands[brand_key] = seen_brands.get(brand_key, 0) + 1
+
+    return selected
 
 
 def _build_nutrient_highlights(
@@ -139,6 +159,7 @@ def rank_foods(
         serving_size=serving_size,
         source_prefixes=source_prefixes,
     )
+    raw_recs = _diversify_recommendations(raw_recs, top_k)
 
     results: List[RecommendationItem] = []
     for rec in raw_recs:
