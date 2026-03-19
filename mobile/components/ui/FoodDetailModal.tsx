@@ -44,7 +44,7 @@ export function FoodDetailModal({ item, visible, onClose }: Props) {
 
   if (!item) return null;
 
-  const { food, serving_size_g } = item;
+  const { food, serving_size_g, explanation } = item;
   const compoundId = `${food.source}:${food.food_id}`;
   const isFavorited = favorites.has(compoundId);
 
@@ -177,6 +177,14 @@ export function FoodDetailModal({ item, visible, onClose }: Props) {
               * The % Daily Value tells you how much a nutrient in a serving of food contributes to a daily diet.
             </Text>
           </View>
+
+          {/* Why recommended */}
+          {explanation ? (
+            <View style={styles.explanationBox}>
+              <Text style={styles.explanationLabel}>Why recommended</Text>
+              <Text style={styles.explanationText}>{explanation}</Text>
+            </View>
+          ) : null}
 
           {/* Meal type selector */}
           <Text style={styles.sectionLabel}>Log as</Text>
@@ -321,6 +329,14 @@ const styles = StyleSheet.create({
   dvNote: { fontSize: 11, fontWeight: "700", color: Colors.text, textAlign: "right", marginBottom: 2 },
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: 1 },
   dvFooter: { fontSize: 10, color: Colors.textMuted, marginTop: 4, lineHeight: 13 },
+  explanationBox: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.card,
+    padding: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  explanationLabel: { ...Typography.label, marginBottom: 4 },
+  explanationText: { fontSize: 13, color: Colors.text, lineHeight: 19 },
   sectionLabel: { ...Typography.label, marginBottom: Spacing.xs, marginTop: 4 },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs, marginBottom: Spacing.md },
   metaPill: {
