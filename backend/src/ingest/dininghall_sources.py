@@ -20,6 +20,7 @@ No Playwright fallback is needed once the correct headers/method are used.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
@@ -31,6 +32,16 @@ import requests
 from src.logical_view import Food
 
 logger = logging.getLogger(__name__)
+
+
+def _stable_dining_food_id(hall: str, name: str) -> int:
+    """
+    Generate a deterministic negative ID so favorites/logs survive menu refreshes.
+    """
+    normalized = f"{hall.lower()}|{' '.join(name.lower().split())}"
+    digest = hashlib.blake2b(normalized.encode("utf-8"), digest_size=8).digest()
+    value = int.from_bytes(digest, "big") & 0x7FFF_FFFF_FFFF_FFFF
+    return -max(1, value)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -293,8 +304,8 @@ class UCIDiningScraper:
     ) -> List[Food]:
         """Convert ``DiningMenuItem`` list → ``Food`` list."""
         foods: List[Food] = []
-        for idx, item in enumerate(menu_items):
-            food_id = -(idx + 1)
+        for item in menu_items:
+            food_id = _stable_dining_food_id(item.hall, item.name)
             calories = item.calories if item.calories is not None else default_calories
             meal_category = (
                 item.meal_period if item.meal_period != "unknown" else "any"
@@ -312,6 +323,9 @@ class UCIDiningScraper:
                     tags=list(item.dietary_flags),
                     brand=item.hall,
                     source=f"uci_dining_{item.hall.lower()}",
+                    hall=item.hall,
+                    station=item.station,
+                    meal_period=item.meal_period,
                 )
             )
         return foods
@@ -461,6 +475,11 @@ class UCIDiningScraper:
 
         Nutrition values live in the ``attributes`` list as ``{name, value}``
         pairs; e.g. ``{"name": "calories", "value": "320"}``.
+
+        Some halls (e.g. Brandywine) use configurable products where nutrition
+        is nested inside ``configurable_option_attributes`` as a JSON string.
+        We fall back to the first option in that JSON when direct attributes
+        are absent.
         """
         result: Dict[str, Dict[str, Any]] = {}
 
@@ -473,10 +492,28 @@ class UCIDiningScraper:
             for attr in product.get("attributes", []):
                 attr_map[attr.get("name", "")] = attr.get("value")
 
-            # Nutrition
+            # Nutrition — direct attributes first
             parsed: Dict[str, Any] = {"name": name}
             for attr_name, field_name in _NUTRITION_ATTR_MAP.items():
                 parsed[field_name] = _to_float(attr_map.get(attr_name))
+
+            # Fallback: configurable products (e.g. Brandywine) embed nutrition
+            # inside a JSON string keyed by ``configurable_option_attributes``.
+            # Use the first option's values when no direct nutrition was found.
+            if all(parsed.get(f) is None for f in _NUTRITION_ATTR_MAP.values()):
+                raw_opts = attr_map.get("configurable_option_attributes")
+                if isinstance(raw_opts, str):
+                    try:
+                        opts = json.loads(raw_opts)
+                        first_opt = next(iter(opts.values())) if opts else {}
+                        for attr_name, field_name in _NUTRITION_ATTR_MAP.items():
+                            parsed[field_name] = _to_float(first_opt.get(attr_name))
+                        # Also pick up dietary flags from configurable option
+                        pref_raw_cfg = first_opt.get("recipe_attributes", [])
+                        if pref_raw_cfg and not attr_map.get("recipe_attributes"):
+                            attr_map.setdefault("recipe_attributes", pref_raw_cfg)
+                    except (json.JSONDecodeError, StopIteration):
+                        pass
 
             # Allergens
             allergen_raw = attr_map.get("allergens_intolerances")
