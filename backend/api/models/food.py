@@ -1,8 +1,11 @@
 # api/models/food.py
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from src.logical_view.food import Food
 
 
 class FoodResponse(BaseModel):
@@ -17,6 +20,8 @@ class FoodResponse(BaseModel):
     fat: float
     fiber: float
     tags: List[str] = []
+    category: str = ""
+    taxonomy_path: List[str] = []
 
     # Extended nutrition label fields (None if unavailable)
     saturated_fat: Optional[float] = None
@@ -34,6 +39,37 @@ class FoodResponse(BaseModel):
     hall: Optional[str] = None
     station: Optional[str] = None
     meal_period: Optional[str] = None
+
+    @classmethod
+    def from_food(cls, food: "Food") -> "FoodResponse":
+        return cls(
+            food_id=food.food_id,
+            name=food.name,
+            source=food.source,
+            brand=food.brand,
+            meal_category=food.meal_category,
+            calories=food.calories,
+            protein=food.protein,
+            carbs=food.carbs,
+            fat=food.fat,
+            fiber=food.fiber,
+            tags=food.tags,
+            category=food.category,
+            taxonomy_path=food.taxonomy_path,
+            saturated_fat=food.saturated_fat,
+            trans_fat=food.trans_fat,
+            cholesterol=food.cholesterol,
+            sodium=food.sodium,
+            sugars=food.sugars,
+            added_sugars=food.added_sugars,
+            vitamin_d=food.vitamin_d,
+            calcium=food.calcium,
+            iron=food.iron,
+            potassium=food.potassium,
+            hall=food.hall,
+            station=food.station,
+            meal_period=food.meal_period,
+        )
 
 
 class FoodSearchParams(BaseModel):

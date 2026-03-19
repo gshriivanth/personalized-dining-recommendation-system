@@ -40,6 +40,11 @@ class Food:
     tags: List[str] = field(default_factory=list)
     brand: str = ""
     source: str = "usda_fdc"
+    category: str = ""
+    taxonomy_path: List[str] = field(default_factory=list)
+    hall: Optional[str] = None
+    station: Optional[str] = None
+    meal_period: Optional[str] = None
     # Extended nutrition label fields (all per 100g, None if unavailable)
     saturated_fat: Optional[float] = None
     trans_fat: Optional[float] = None
@@ -51,6 +56,14 @@ class Food:
     calcium: Optional[float] = None         # mg
     iron: Optional[float] = None            # mg
     potassium: Optional[float] = None       # mg
+
+    def __post_init__(self) -> None:
+        from src.taxonomy.food_taxonomy import infer_food_category, taxonomy_path_for_category
+
+        if not self.category:
+            self.category = infer_food_category(self.name, self.tags)
+        if not self.taxonomy_path:
+            self.taxonomy_path = taxonomy_path_for_category(self.category)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a JSON-serializable dict."""
@@ -66,6 +79,11 @@ class Food:
             "tags": self.tags,
             "brand": self.brand,
             "source": self.source,
+            "category": self.category,
+            "taxonomy_path": self.taxonomy_path,
+            "hall": self.hall,
+            "station": self.station,
+            "meal_period": self.meal_period,
             "saturated_fat": self.saturated_fat,
             "trans_fat": self.trans_fat,
             "cholesterol": self.cholesterol,
@@ -93,6 +111,11 @@ class Food:
             tags=data.get("tags", []),
             brand=data.get("brand", ""),
             source=data.get("source", "usda_fdc"),
+            category=data.get("category", ""),
+            taxonomy_path=data.get("taxonomy_path", []),
+            hall=data.get("hall"),
+            station=data.get("station"),
+            meal_period=data.get("meal_period"),
             saturated_fat=data.get("saturated_fat"),
             trans_fat=data.get("trans_fat"),
             cholesterol=data.get("cholesterol"),
