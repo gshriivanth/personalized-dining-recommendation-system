@@ -4,8 +4,16 @@ import { fetchExploreRecommendations } from "@/lib/api/explore";
 import { useProfileStore } from "@/lib/store/profile";
 import type { ExploreRecommendResponse } from "@/lib/types/api";
 
-export function useExploreRecommendations(query?: string, mealType?: string) {
+interface ExploreFilters {
+  query?: string;
+  mealType?: string;
+  category?: string;
+  requiredTags?: string[];
+}
+
+export function useExploreRecommendations(filters: ExploreFilters = {}) {
   const { userId, goals, consumedToday, favorites } = useProfileStore();
+  const { query, mealType, category, requiredTags = [] } = filters;
 
   // Convert compound IDs ("source:food_id") to numeric food_ids for the backend
   const favoriteIds = Array.from(favorites)
@@ -16,15 +24,17 @@ export function useExploreRecommendations(query?: string, mealType?: string) {
   const hasNonDiningFavorites = Array.from(favorites).some(
     (id) => !id.startsWith("uci_dining_")
   );
-  const enabled = !!query || hasNonDiningFavorites;
+  const enabled = !!query || hasNonDiningFavorites || !!category || requiredTags.length > 0;
 
   return useQuery<ExploreRecommendResponse, Error>({
-    queryKey: ["explore-recommendations", query, mealType, consumedToday, favoriteIds],
+    queryKey: ["explore-recommendations", query, mealType, category, requiredTags, consumedToday, favoriteIds],
     queryFn: () =>
       fetchExploreRecommendations({
         user_id: userId ?? undefined,
         query,
         meal_type: mealType,
+        category,
+        required_tags: requiredTags,
         goals,
         consumed_today: consumedToday,
         favorites: favoriteIds,
