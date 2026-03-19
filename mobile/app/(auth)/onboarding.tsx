@@ -63,7 +63,7 @@ export default function OnboardingScreen() {
       const goals = GOAL_PRESETS[selectedPreset].goals;
       await updateGoals(goals);
       const profile = await getProfile();
-      setProfile(profile.user_id, profile.name || name.trim(), profile.goals);
+      setProfile(profile.user_id, profile.name || name.trim(), profile.goals, profile.favorites);
       router.replace("/(tabs)");
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Could not create profile.");

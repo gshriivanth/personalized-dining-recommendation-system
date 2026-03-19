@@ -16,7 +16,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as Linking from "expo-linking";
 import { Alert } from "react-native";
 import { useProfileStore } from "@/lib/store/profile";
-import { getProfile } from "@/lib/api/profile";
+import { getConsumedToday, getProfile } from "@/lib/api/profile";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,7 +30,7 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  const { setProfile, reset } = useProfileStore();
+  const { setProfile, setConsumedToday, reset } = useProfileStore();
   const [fontsLoaded] = useFonts({
     // Add custom fonts here when available.
     // "Inter-Regular": require("../assets/fonts/Inter-Regular.ttf"),
@@ -90,8 +90,20 @@ export default function RootLayout() {
 
   async function syncProfileFromApi() {
     try {
-      const profile = await getProfile();
-      setProfile(profile.user_id, profile.name, profile.goals);
+      const [profile, consumedToday] = await Promise.all([
+        getProfile(),
+        getConsumedToday().catch(() => null),
+      ]);
+      setProfile(profile.user_id, profile.name, profile.goals, profile.favorites);
+      if (consumedToday) {
+        setConsumedToday({
+          calories: consumedToday.total_calories,
+          protein: consumedToday.total_protein,
+          carbs: consumedToday.total_carbs,
+          fat: consumedToday.total_fat,
+          fiber: consumedToday.total_fiber,
+        });
+      }
     } catch (error) {
       // If the profile isn't ready yet (e.g., unconfirmed user), don't block UI.
       console.warn("Profile sync skipped:", (error as Error).message);

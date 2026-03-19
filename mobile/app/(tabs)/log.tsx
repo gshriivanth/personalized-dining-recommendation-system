@@ -1,19 +1,32 @@
 // app/(tabs)/log.tsx — Meal log screen (placeholder, ready to extend)
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Colors, Spacing, Radius, Typography, Shadow } from "@/constants/theme";
 import { getConsumedToday } from "@/lib/api/profile";
+import { useProfileStore } from "@/lib/store/profile";
 import type { MealLogEntry } from "@/lib/types/user";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
+  const { setConsumedToday } = useProfileStore();
   const { data, isLoading } = useQuery({
     queryKey: ["consumed-today"],
     queryFn: () => getConsumedToday(),
   });
+
+  useEffect(() => {
+    if (!data) return;
+    setConsumedToday({
+      calories: data.total_calories,
+      protein: data.total_protein,
+      carbs: data.total_carbs,
+      fat: data.total_fat,
+      fiber: data.total_fiber,
+    });
+  }, [data, setConsumedToday]);
 
   const entries = data?.entries ?? [];
 
