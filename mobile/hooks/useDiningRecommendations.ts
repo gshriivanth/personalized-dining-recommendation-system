@@ -9,9 +9,12 @@ export function useDiningRecommendations(
   mealPeriod?: string
 ) {
   const { userId, goals, consumedToday, favorites } = useProfileStore();
+  const favoriteIds = Array.from(favorites)
+    .map((id) => parseInt(id.split(":")[1], 10))
+    .filter((n) => !isNaN(n));
 
   return useQuery<DiningRecommendResponse, Error>({
-    queryKey: ["dining-recommendations", hall, mealPeriod, consumedToday],
+    queryKey: ["dining-recommendations", hall, mealPeriod, consumedToday, favoriteIds],
     queryFn: () =>
       fetchDiningRecommendations({
         user_id: userId ?? undefined,
@@ -19,7 +22,7 @@ export function useDiningRecommendations(
         meal_period: mealPeriod,
         goals,
         consumed_today: consumedToday,
-        favorites: [],
+        favorites: favoriteIds,
         top_k: 8,
       }),
     // Dining menus change at meal period boundaries — stale after 15 min

@@ -29,7 +29,13 @@ interface Props {
 }
 
 export function FoodDetailModal({ item, visible, onClose }: Props) {
-  const { favorites, addFavorite: storeFav, removeFavorite: storeUnfav } = useProfileStore();
+  const {
+    favorites,
+    consumedToday,
+    setConsumedToday,
+    addFavorite: storeFav,
+    removeFavorite: storeUnfav,
+  } = useProfileStore();
   const queryClient = useQueryClient();
 
   const [selectedMealType, setSelectedMealType] = useState<MealType>("lunch");
@@ -60,6 +66,8 @@ export function FoodDetailModal({ item, visible, onClose }: Props) {
         await addFavorite(food.source, food.food_id, food.name);
         storeFav(compoundId);
       }
+      await queryClient.invalidateQueries({ queryKey: ["explore-recommendations"] });
+      await queryClient.invalidateQueries({ queryKey: ["dining-recommendations"] });
     } catch (err: any) {
       Alert.alert("Error", err.message ?? "Could not update favorite.");
     } finally {
@@ -82,7 +90,16 @@ export function FoodDetailModal({ item, visible, onClose }: Props) {
         fiber: (food.fiber ?? 0) * s,
         meal_type: selectedMealType,
       });
+      setConsumedToday({
+        calories: consumedToday.calories + (food.calories ?? 0) * s,
+        protein: consumedToday.protein + (food.protein ?? 0) * s,
+        carbs: consumedToday.carbs + (food.carbs ?? 0) * s,
+        fat: consumedToday.fat + (food.fat ?? 0) * s,
+        fiber: consumedToday.fiber + (food.fiber ?? 0) * s,
+      });
       await queryClient.invalidateQueries({ queryKey: ["consumed-today"] });
+      await queryClient.invalidateQueries({ queryKey: ["explore-recommendations"] });
+      await queryClient.invalidateQueries({ queryKey: ["dining-recommendations"] });
       Alert.alert("Logged!", `${food.name} added to your ${selectedMealType} log.`);
       onClose();
     } catch (err: any) {
@@ -106,6 +123,12 @@ export function FoodDetailModal({ item, visible, onClose }: Props) {
           <Text style={styles.foodName} numberOfLines={3}>{food.name}</Text>
           {food.brand ? <Text style={styles.brand}>{food.brand}</Text> : null}
           <Text style={styles.serving}>Per {serving_size_g}g serving</Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.metaPill}>{labelize(food.category)}</Text>
+            {food.tags.slice(0, 3).map((tag) => (
+              <Text key={tag} style={styles.metaPillMuted}>{labelize(tag)}</Text>
+            ))}
+          </View>
 
           {/* ── Nutrition Facts label ── */}
           <View style={styles.labelBox}>
@@ -299,6 +322,23 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: Colors.border, marginVertical: 1 },
   dvFooter: { fontSize: 10, color: Colors.textMuted, marginTop: 4, lineHeight: 13 },
   sectionLabel: { ...Typography.label, marginBottom: Spacing.xs, marginTop: 4 },
+  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.xs, marginBottom: Spacing.md },
+  metaPill: {
+    fontSize: 11,
+    color: Colors.textInverted,
+    backgroundColor: Colors.explore.primary,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
+  metaPillMuted: {
+    fontSize: 11,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
   mealTypeRow: { flexDirection: "row", gap: Spacing.xs, marginBottom: Spacing.md },
   mealPill: {
     flex: 1,
@@ -339,3 +379,10 @@ const styles = StyleSheet.create({
   favBtnTextActive: { color: Colors.textInverted },
   btnDisabled: { opacity: 0.5 },
 });
+
+function labelize(value: string): string {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
