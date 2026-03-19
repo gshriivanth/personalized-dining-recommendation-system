@@ -1,17 +1,19 @@
-// app/(tabs)/log.tsx — Meal log screen (placeholder, ready to extend)
+// app/(tabs)/log.tsx — Meal log screen
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Colors, Spacing, Radius, Typography, Shadow } from "@/constants/theme";
-import { getConsumedToday } from "@/lib/api/profile";
+import { getConsumedToday, deleteMealLog } from "@/lib/api/profile";
 import { useProfileStore } from "@/lib/store/profile";
 import type { MealLogEntry } from "@/lib/types/user";
 
 export default function LogScreen() {
   const insets = useSafeAreaInsets();
   const { setConsumedToday } = useProfileStore();
+  const queryClient = useQueryClient();
+
   const { data, isLoading } = useQuery({
     queryKey: ["consumed-today"],
     queryFn: () => getConsumedToday(),
@@ -27,6 +29,28 @@ export default function LogScreen() {
       fiber: data.total_fiber,
     });
   }, [data, setConsumedToday]);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteMealLog,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["consumed-today"] });
+    },
+  });
+
+  function confirmDelete(item: MealLogEntry) {
+    Alert.alert(
+      "Remove from log?",
+      `Remove "${item.food_name}" from today's log?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(item.log_id),
+        },
+      ]
+    );
+  }
 
   const entries = data?.entries ?? [];
 
@@ -44,6 +68,13 @@ export default function LogScreen() {
           <Text style={styles.entryMacros}>
             P:{Math.round(item.protein)}g  C:{Math.round(item.carbs)}g  F:{Math.round(item.fat)}g
           </Text>
+          <Pressable
+            style={styles.deleteBtn}
+            onPress={() => confirmDelete(item)}
+            hitSlop={8}
+          >
+            <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
+          </Pressable>
         </View>
       </View>
     );
@@ -117,6 +148,7 @@ const styles = StyleSheet.create({
   entryRight: { alignItems: "flex-end" },
   entryCal: { fontSize: 14, fontWeight: "700", color: Colors.macro.calorie },
   entryMacros: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  deleteBtn: { marginTop: 6, alignSelf: "flex-end" },
   empty: { alignItems: "center", gap: Spacing.sm, paddingTop: 80 },
   emptyText: { ...Typography.subheading, color: Colors.textMuted },
   emptyHint: { ...Typography.label, textAlign: "center" },
