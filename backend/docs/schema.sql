@@ -135,6 +135,19 @@ create table if not exists user_favorites (
 -- Migration: add food_name if the table was created before it was added.
 alter table user_favorites add column if not exists food_name text not null default '';
 
+-- Migration: drop the FK to foods if it was mistakenly added in an earlier schema
+-- version. UCI dining items are in-memory only and are never inserted into the
+-- foods table, so this constraint blocks favoriting any dining-hall food.
+do $$ begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where table_name = 'user_favorites'
+      and constraint_name = 'user_favorites_source_food_id_fkey'
+  ) then
+    alter table user_favorites drop constraint user_favorites_source_food_id_fkey;
+  end if;
+end $$;
+
 alter table user_favorites enable row level security;
 drop policy if exists "user_favorites: own rows" on user_favorites;
 create policy "user_favorites: own rows" on user_favorites
@@ -162,6 +175,19 @@ create table if not exists user_consumption_log (
 -- Migration: add food_name and meal_type if the table was created before they were added.
 alter table user_consumption_log add column if not exists food_name text not null default '';
 alter table user_consumption_log add column if not exists meal_type text;
+
+-- Migration: drop the FK to foods if it was mistakenly added in an earlier schema
+-- version. UCI dining items are in-memory only and are never inserted into the
+-- foods table, so this constraint blocks logging any dining-hall food.
+do $$ begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where table_name = 'user_consumption_log'
+      and constraint_name = 'user_consumption_log_source_food_id_fkey'
+  ) then
+    alter table user_consumption_log drop constraint user_consumption_log_source_food_id_fkey;
+  end if;
+end $$;
 
 alter table user_consumption_log enable row level security;
 drop policy if exists "consumption_log: own rows" on user_consumption_log;
